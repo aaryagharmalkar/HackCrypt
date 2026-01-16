@@ -36,6 +36,7 @@ export default function Home() {
     totalExpenses: 0,
   });
   const [healthData, setHealthData] = useState<any>(null);
+  const [categoryData, setCategoryData] = useState<{ name: string, val: number, color: string }[]>([]);
 
   useEffect(() => {
     fetchFinancialData();
@@ -54,13 +55,14 @@ export default function Home() {
 
       const { data: transactions, error } = await supabase
         .from('transactions')
-        .select('amount, type')
+        .select('amount, type, category')
         .eq('user_id', user.id);
 
       if (error) throw error;
 
       let income = 0;
       let expenses = 0;
+      const categoryTotals: Record<string, number> = {};
 
       transactions?.forEach(tx => {
         const amount = Number(tx.amount);
@@ -68,8 +70,50 @@ export default function Home() {
           income += amount;
         } else if (tx.type === 'debit') {
           expenses += amount;
+          const category = tx.category || 'Other';
+          categoryTotals[category] = (categoryTotals[category] || 0) + amount;
         }
       });
+
+      // Highly distinct but premium color mapping
+      const categoryColors: Record<string, string> = {
+        'Shopping': 'bg-blue-500',
+        'Food & Drink': 'bg-emerald-500',
+        'Food': 'bg-emerald-500',
+        'Rent': 'bg-rose-500',
+        'Travel': 'bg-cyan-500',
+        'Bills': 'bg-amber-500',
+        'Income': 'bg-secondary',
+        'Uncategorized': 'bg-slate-400',
+        'uncategorised': 'bg-slate-400',
+        'Uncategorised': 'bg-slate-400',
+        'Other': 'bg-slate-400',
+        'UPI Payments': 'bg-orange-400'
+      };
+
+      const fallbackColors = [
+        'bg-blue-500',
+        'bg-emerald-500',
+        'bg-orange-400',
+        'bg-rose-500',
+        'bg-amber-500',
+        'bg-cyan-500',
+        'bg-indigo-500',
+        'bg-teal-500'
+      ];
+
+      const formattedCategoryData = Object.entries(categoryTotals)
+        .map(([name, total], index) => {
+          const cleanName = name.split('/')[0].trim(); // Handle potential slashes from UPI decodings
+          return {
+            name: (name === 'Uncategorized' || name === 'uncategorised' || name === 'Uncategorised') ? 'Other' : name,
+            val: expenses > 0 ? Math.round((total / expenses) * 100) : 0,
+            color: categoryColors[name] || categoryColors[cleanName] || fallbackColors[index % fallbackColors.length]
+          };
+        })
+        .sort((a, b) => b.val - a.val);
+
+      setCategoryData(formattedCategoryData);
 
       setStats({
         netWorth: income - expenses,
@@ -166,14 +210,14 @@ export default function Home() {
             </CardHeader>
             <CardContent className="pt-2 pb-6">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-4">
-                {[
-                  { name: "Shopping", val: 35, color: "bg-primary" },
-                  { name: "Food", val: 25, color: "bg-secondary" },
-                  { name: "Rent", val: 20, color: "bg-accent" },
-                  { name: "Travel", val: 15, color: "bg-muted" },
-                ].map((item) => (
+                {(categoryData.length > 0 ? categoryData.slice(0, 4) : [
+                  { name: "Shopping", val: 0, color: "bg-primary" },
+                  { name: "Food", val: 0, color: "bg-secondary" },
+                  { name: "Rent", val: 0, color: "bg-accent" },
+                  { name: "Travel", val: 0, color: "bg-muted" },
+                ]).map((item) => (
                   <div key={item.name} className="space-y-2">
-                    <p className="text-[11px] font-black text-muted uppercase tracking-widest">{item.name}</p>
+                    <p className="text-[11px] font-black text-muted uppercase tracking-widest truncate" title={item.name}>{item.name}</p>
                     <div className="flex items-end gap-2">
                       <span className="text-xl font-bold">{item.val}%</span>
                       <div className={cn("w-2 h-2 rounded-full mb-1.5", item.color)} />
@@ -182,11 +226,15 @@ export default function Home() {
                 ))}
               </div>
               <div className="mt-6 h-4 w-full bg-muted/10 rounded-full flex overflow-hidden">
-                <div className="h-full bg-primary transition-all duration-1000" style={{ width: "35%" }} />
-                <div className="h-full bg-secondary transition-all duration-1000" style={{ width: "25%" }} />
-                <div className="h-full bg-accent transition-all duration-1000" style={{ width: "20%" }} />
-                <div className="h-full bg-muted transition-all duration-1000" style={{ width: "15%" }} />
-                <div className="h-full bg-slate-200" style={{ width: "5%" }} />
+                {categoryData.length > 0 ? categoryData.map((item, idx) => (
+                  <div
+                    key={idx}
+                    className={cn("h-full transition-all duration-1000", item.color)}
+                    style={{ width: `${item.val}%` }}
+                  />
+                )) : (
+                  <div className="h-full bg-muted/20 w-full" />
+                )}
               </div>
             </CardContent>
           </Card>

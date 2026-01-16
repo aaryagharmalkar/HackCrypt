@@ -18,12 +18,12 @@ import {
     Loader2,
     DollarSign,
     Briefcase,
-    Utensils,
     Plane,
     Zap,
     Gift,
     CheckCircle2,
-    XCircle
+    XCircle,
+    ChevronDown
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
@@ -40,7 +40,7 @@ const getCategoryIcon = (category: string) => {
     if (lower.includes('food') || lower.includes('drink')) return Coffee;
     if (lower.includes('transport') || lower.includes('uber') || lower.includes('ola')) return Car;
     if (lower.includes('house') || lower.includes('rent')) return Home;
-    if (lower.includes('util') || lower.includes('bill') || lower.includes('recharge')) return Smartphone;
+    if (lower.includes('util') || lower.includes('bill') || lower.includes('recharge') || lower.includes('upi')) return Smartphone;
     if (lower.includes('salary') || lower.includes('income')) return ArrowUpRight;
     if (lower.includes('transfer')) return ArrowDownLeft;
     if (lower.includes('tax')) return Briefcase;
@@ -60,10 +60,13 @@ interface Transaction {
     type: string;
 }
 
+const CATEGORIES = ["Food", "Travel", "UPI Payments", "Shopping", "Uncategorised"];
+
 export default function TransactionsPage() {
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [loading, setLoading] = useState(true);
     const [uploading, setUploading] = useState(false);
+    const [updatingId, setUpdatingId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
     const [filterCategory, setFilterCategory] = useState("All");
     const [snackbar, setSnackbar] = useState<{ show: boolean; message: string; type: 'success' | 'error' }>({
@@ -90,12 +93,7 @@ export default function TransactionsPage() {
             setUploading(true);
             const metadata = await PDFHandler.uploadPDF(file);
             showMessage(`Statement "${metadata.fileName}" uploaded and stored successfully`);
-
-            // If the user wants to see the uploaded documents, we can redirect or show a link
-            console.log('PDF Public URL:', metadata.publicUrl);
-
-            // Optional: Refresh transactions if the upload triggers a background process to parse them
-            // fetchTransactions(); 
+            fetchTransactions();
         } catch (error: any) {
             console.error('Error uploading file:', error);
             showMessage(error.message || 'Error uploading file', 'error');
@@ -108,7 +106,6 @@ export default function TransactionsPage() {
     const fetchTransactions = async () => {
         try {
             const { data: { user } } = await supabase.auth.getUser();
-
             if (!user) return;
 
             const { data, error } = await supabase
@@ -125,7 +122,7 @@ export default function TransactionsPage() {
                 category: tx.category || 'Uncategorized',
                 amount: tx.type === 'debit' ? -Math.abs(tx.amount) : Math.abs(tx.amount),
                 date: new Date(tx.date).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }),
-                method: "Bank Account", // Default for now since we don't have method in table yet
+                method: "Bank Account",
                 status: "completed",
                 type: tx.type
             }));
@@ -138,13 +135,40 @@ export default function TransactionsPage() {
         }
     };
 
+    const updateTransactionCategory = async (txId: string, newCategory: string) => {
+        try {
+            setUpdatingId(txId);
+            const { error } = await supabase
+                .from('transactions')
+                .update({ category: newCategory })
+                .eq('id', txId);
+
+            if (error) {
+                console.error('Supabase update error message:', error.message);
+                console.error('Supabase update error details:', error.details);
+                console.error('Supabase update error hint:', error.hint);
+                throw new Error(error.message);
+            }
+
+            setTransactions(prev =>
+                prev.map(tx => tx.id === txId ? { ...tx, category: newCategory } : tx)
+            );
+            showMessage(`Category updated to ${newCategory}`);
+        } catch (error: any) {
+            console.error('Final update catch:', error);
+            showMessage(error.message || "Failed to update category", "error");
+        } finally {
+            setUpdatingId(null);
+        }
+    };
+
     const filteredTransactions = transactions.filter(tx => {
         const matchesSearch = tx.name.toLowerCase().includes(searchQuery.toLowerCase());
         const matchesCategory = filterCategory === "All"
             ? true
             : filterCategory === "Income"
                 ? tx.amount > 0
-                : tx.amount < 0; // Expense
+                : tx.amount < 0;
         return matchesSearch && matchesCategory;
     });
 
@@ -253,6 +277,8 @@ export default function TransactionsPage() {
                             ) : (
                                 filteredTransactions.map((tx) => {
                                     const Icon = getCategoryIcon(tx.category);
+                                    const isUpdating = updatingId === tx.id;
+
                                     return (
                                         <tr key={tx.id} className="group hover:bg-muted/5 transition-colors">
                                             <td className="px-6 py-4">
@@ -272,9 +298,25 @@ export default function TransactionsPage() {
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4">
-                                                <Badge variant="secondary" className="font-medium text-[10px] uppercase tracking-wide">
-                                                    {tx.category}
-                                                </Badge>
+                                                <div className="relative group/select inline-flex items-center">
+                                                    <select
+                                                        value={tx.category}
+                                                        disabled={isUpdating}
+                                                        onChange={(e) => updateTransactionCategory(tx.id, e.target.value)}
+                                                        className={cn(
+                                                            "appearance-none bg-muted/5 hover:bg-muted/10 border border-border/50 rounded-lg pl-3 pr-8 py-1.5 text-[10px] font-bold uppercase tracking-widest cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all",
+                                                            isUpdating && "opacity-50 cursor-not-allowed"
+                                                        )}
+                                                    >
+                                                        {CATEGORIES.map(cat => (
+                                                            <option key={cat} value={cat} className="bg-background text-foreground py-2">
+                                                                {cat}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                    <ChevronDown className="absolute right-2.5 w-3 h-3 text-muted pointer-events-none group-hover/select:text-primary transition-colors" />
+                                                    {isUpdating && <Loader2 className="absolute -left-6 w-3 h-3 animate-spin text-primary" />}
+                                                </div>
                                             </td>
                                             <td className="px-6 py-4 text-sm text-muted font-medium">{tx.date}</td>
                                             <td className="px-6 py-4 text-sm text-muted font-medium">{tx.method}</td>

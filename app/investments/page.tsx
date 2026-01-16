@@ -131,31 +131,38 @@ export default function InvestmentsPage() {
 
                 {/* Analytics & Advice */}
                 <div className="lg:col-span-4 space-y-8">
-                    <Card className="border-none shadow-md overflow-hidden relative bg-slate-100 dark:bg-slate-900">
-                        <CardHeader>
-                            <CardTitle className="text-lg">Portfolio Diversification</CardTitle>
+                    <Card className="border-none shadow-2xl overflow-hidden relative bg-slate-900 text-white rounded-[2rem]">
+                        <div className="absolute top-0 right-0 p-6 opacity-5 pointer-events-none">
+                            <PieChart size={140} />
+                        </div>
+                        <CardHeader className="relative z-10 pb-2 pt-8 px-8">
+                            <CardTitle className="text-xl font-bold tracking-tight text-white/90">Portfolio Analytics</CardTitle>
                         </CardHeader>
-                        <CardContent>
-                            <div className="space-y-4">
+                        <CardContent className="relative z-10 p-8 pt-4">
+                            <div className="space-y-6">
                                 {[
                                     { name: "Stocks", val: 45, color: "bg-primary" },
                                     { name: "Mutual Funds", val: 30, color: "bg-secondary" },
                                     { name: "Crypto", val: 15, color: "bg-accent" },
-                                    { name: "Golds/Cash", val: 10, color: "bg-muted" },
+                                    { name: "Golds/Cash", val: 10, color: "bg-slate-500" },
                                 ].map((item) => (
-                                    <div key={item.name} className="space-y-1">
-                                        <div className="flex justify-between text-xs font-bold uppercase tracking-wider">
+                                    <div key={item.name} className="space-y-2.5">
+                                        <div className="flex justify-between text-[11px] font-black uppercase tracking-[0.2em] text-white/30">
                                             <span>{item.name}</span>
-                                            <span>{item.val}%</span>
+                                            <span className="text-white/80">{item.val}%</span>
                                         </div>
-                                        <div className="h-1.5 w-full bg-muted/20 rounded-full overflow-hidden">
-                                            <div className={cn("h-full", item.color)} style={{ width: `${item.val}%` }} />
+                                        <div className="h-2 w-full bg-white/[0.03] rounded-full overflow-hidden border border-white/[0.02]">
+                                            <div
+                                                className={cn("h-full transition-all duration-1000 ease-out shadow-[0_0_15px_rgba(255,255,255,0.05)]", item.color)}
+                                                style={{ width: `${item.val}%` }}
+                                            />
                                         </div>
                                     </div>
                                 ))}
                             </div>
-                            <div className="mt-8 p-4 rounded-2xl bg-white/50 dark:bg-white/5 border border-border">
-                                <p className="text-xs text-muted italic font-medium leading-relaxed">
+                            <div className="mt-10 p-6 rounded-[2rem] bg-gradient-to-br from-white/[0.03] to-white/[0.01] border border-white/[0.08] backdrop-blur-xl relative overflow-hidden group">
+                                <div className="absolute -right-4 -top-4 w-12 h-12 bg-primary/20 rounded-full blur-2xl group-hover:bg-primary/30 transition-all" />
+                                <p className="text-[12px] text-white/70 italic font-medium leading-relaxed relative z-10">
                                     "Your portfolio is heavily weighted in Equity. Consider rebalancing into Bonds or Gold for lower volatility."
                                 </p>
                             </div>
