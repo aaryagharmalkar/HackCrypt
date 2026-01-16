@@ -28,7 +28,7 @@ const menuItems = [
     { icon: ReceiptIndianRupee, label: "Transactions", href: "/transactions" },
     { icon: Target, label: "Budgets & Goals", href: "/budgeting" },
     { icon: TrendingUp, label: "Investments", href: "/investments" },
-    { icon: Wallet, label: "Loans", href: "/loans" },
+    { icon: Wallet, label: "Loan Calculator", href: "/loans" },
     { icon: ShieldCheck, label: "Credit Score", href: "/credit-score" },
     { icon: FileText, label: "Tax Compliance", href: "/tax" },
 ];
