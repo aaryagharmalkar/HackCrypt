@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { OverviewCard } from "@/components/dashboard/OverviewCard";
 import { RecentTransactions } from "@/components/dashboard/RecentTransactions";
 import { SavingsGoal } from "@/components/dashboard/SavingsGoal";
+import { FinancialHealthSpeedometer } from "@/components/dashboard/FinancialHealthSpeedometer";
 import {
   Plus,
   Wallet,
@@ -13,7 +14,11 @@ import {
   Bell,
   Calendar,
   TrendingUp,
-  Loader2
+  TrendingDown,
+  Loader2,
+  PiggyBank,
+  CreditCard,
+  ShieldAlert
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
@@ -30,6 +35,7 @@ export default function Home() {
     totalIncome: 0,
     totalExpenses: 0,
   });
+  const [healthData, setHealthData] = useState<any>(null);
 
   useEffect(() => {
     fetchFinancialData();
@@ -70,6 +76,19 @@ export default function Home() {
         totalIncome: income,
         totalExpenses: expenses,
       });
+
+      // Fetch financial health scores
+      const { data: healthScores } = await supabase
+        .from('financial_health_scores')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (healthScores) {
+        setHealthData(healthScores);
+      }
     } catch (error) {
       console.error('Error fetching financial data:', error);
     } finally {
@@ -95,15 +114,11 @@ export default function Home() {
         <div className="flex items-center gap-3">
           <div className="hidden sm:flex items-center gap-2 bg-muted/5 border border-border px-4 py-2 rounded-xl text-sm font-medium">
             <Calendar size={16} className="text-muted" />
-            <span>Jan 16, 2026</span>
+            <span>Jan 17, 2026</span>
           </div>
           <Button variant="ghost" size="icon" className="relative shrink-0">
             <Bell size={20} />
             <span className="absolute top-2 right-2 w-2 h-2 bg-accent rounded-full border-2 border-background" />
-          </Button>
-          <Button size="sm" className="gap-2 shrink-0">
-            <Plus size={18} />
-            <span className="hidden sm:inline">Add Transaction</span>
           </Button>
         </div>
       </header>
@@ -119,7 +134,7 @@ export default function Home() {
             <OverviewCard
               title="Total Net Change"
               amount={formatCurrency(stats.netWorth)}
-              change="" 
+              change=""
               trend={stats.netWorth >= 0 ? "up" : "down"}
               icon={Wallet}
               variant="primary"
@@ -145,13 +160,11 @@ export default function Home() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
         {/* Left Column */}
         <div className="lg:col-span-8 space-y-10">
-          <RecentTransactions />
-
           <Card className="border-none shadow-md overflow-hidden">
             <CardHeader className="pb-2">
               <CardTitle className="text-xl">Spending by Category</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-2 pb-6">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-4">
                 {[
                   { name: "Shopping", val: 35, color: "bg-primary" },
@@ -160,7 +173,7 @@ export default function Home() {
                   { name: "Travel", val: 15, color: "bg-muted" },
                 ].map((item) => (
                   <div key={item.name} className="space-y-2">
-                    <p className="text-xs font-bold text-muted uppercase tracking-wider">{item.name}</p>
+                    <p className="text-[11px] font-black text-muted uppercase tracking-widest">{item.name}</p>
                     <div className="flex items-end gap-2">
                       <span className="text-xl font-bold">{item.val}%</span>
                       <div className={cn("w-2 h-2 rounded-full mb-1.5", item.color)} />
@@ -168,15 +181,17 @@ export default function Home() {
                   </div>
                 ))}
               </div>
-              <div className="mt-8 h-4 w-full bg-muted/10 rounded-full flex overflow-hidden">
-                <div className="h-full bg-primary" style={{ width: "35%" }} />
-                <div className="h-full bg-secondary" style={{ width: "25%" }} />
-                <div className="h-full bg-accent" style={{ width: "20%" }} />
-                <div className="h-full bg-muted" style={{ width: "15%" }} />
+              <div className="mt-6 h-4 w-full bg-muted/10 rounded-full flex overflow-hidden">
+                <div className="h-full bg-primary transition-all duration-1000" style={{ width: "35%" }} />
+                <div className="h-full bg-secondary transition-all duration-1000" style={{ width: "25%" }} />
+                <div className="h-full bg-accent transition-all duration-1000" style={{ width: "20%" }} />
+                <div className="h-full bg-muted transition-all duration-1000" style={{ width: "15%" }} />
                 <div className="h-full bg-slate-200" style={{ width: "5%" }} />
               </div>
             </CardContent>
           </Card>
+
+          <RecentTransactions />
         </div>
 
         {/* Right Column */}
@@ -185,34 +200,72 @@ export default function Home() {
 
           <Card className="border-none shadow-md">
             <CardHeader>
-              <CardTitle className="text-lg">Financial Insights</CardTitle>
+              <CardTitle className="text-lg">Financial Health</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="p-4 rounded-2xl bg-secondary/5 border border-secondary/10 flex gap-4">
-                <div className="w-10 h-10 rounded-xl bg-secondary/10 flex items-center justify-center text-secondary shrink-0">
-                  <TrendingUp size={20} />
+            <CardContent className="space-y-6">
+              {healthData ? (
+                <>
+                  {/* Speedometer */}
+                  <div className="-mt-4">
+                    <FinancialHealthSpeedometer score={healthData.financial_health_score} size="md" />
+                  </div>
+
+                  {/* Score Breakdown */}
+                  <div className="grid grid-cols-1 gap-5">
+                    {[
+                      { label: "Spending", score: healthData.spending_score, icon: Wallet },
+                      { label: "Savings", score: healthData.savings_score, icon: PiggyBank },
+                      { label: "Credit", score: healthData.credit_score, icon: CreditCard },
+                      { label: "EMI", score: healthData.emi_score, icon: TrendingDown },
+                      { label: "Emergency", score: healthData.emergency_score, icon: ShieldAlert },
+                    ].map((item) => {
+                      const getThemeColor = (s: number) => {
+                        if (s >= 80) return "text-secondary bg-secondary/10";
+                        if (s >= 60) return "text-blue-500 bg-blue-500/10";
+                        if (s >= 40) return "text-amber-500 bg-amber-500/10";
+                        return "text-accent bg-accent/10";
+                      };
+
+                      const getProgressColor = (s: number) => {
+                        if (s >= 80) return "bg-secondary";
+                        if (s >= 60) return "bg-blue-500";
+                        if (s >= 40) return "bg-amber-500";
+                        return "bg-accent";
+                      };
+
+                      return (
+                        <div key={item.label} className="group flex flex-col gap-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                              <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center transition-all shadow-sm", getThemeColor(item.score))}>
+                                <item.icon size={20} />
+                              </div>
+                              <span className="text-sm font-bold text-foreground/90 tracking-tight">{item.label}</span>
+                            </div>
+                            <div className="flex flex-col items-end">
+                              <span className="text-sm font-black tracking-tighter">{item.score}</span>
+                              <span className="text-[9px] font-bold text-muted/40 uppercase tracking-widest">Score</span>
+                            </div>
+                          </div>
+                          <div className="h-2 w-full bg-muted/10 rounded-full overflow-hidden">
+                            <div
+                              className={cn("h-full transition-all duration-1000 ease-out rounded-full", getProgressColor(item.score))}
+                              style={{ width: `${item.score}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+
+                </>
+              ) : (
+                <div className="text-center py-8">
+                  <ShieldAlert className="w-10 h-10 text-muted/20 mx-auto mb-3" />
+                  <p className="text-xs text-muted">No financial health data available yet</p>
                 </div>
-                <div>
-                  <p className="text-sm font-bold">Smart Move!</p>
-                  <p className="text-xs text-muted mt-1 leading-relaxed">
-                    You saved ₹12,000 more than last month by reducing dining expenses.
-                  </p>
-                </div>
-              </div>
-              <div className="p-4 rounded-2xl bg-accent/5 border border-accent/10 flex gap-4">
-                <div className="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center text-accent shrink-0">
-                  <ArrowDownCircle size={20} />
-                </div>
-                <div>
-                  <p className="text-sm font-bold">Alert: Budget Target</p>
-                  <p className="text-xs text-muted mt-1 leading-relaxed">
-                    You've reached 85% of your entertainment budget for January.
-                  </p>
-                </div>
-              </div>
-              <Button variant="outline" className="w-full rounded-2xl h-12 text-sm">
-                View Full Analysis
-              </Button>
+              )}
             </CardContent>
           </Card>
         </div>

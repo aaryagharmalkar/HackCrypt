@@ -90,10 +90,10 @@ export default function TransactionsPage() {
             setUploading(true);
             const metadata = await PDFHandler.uploadPDF(file);
             showMessage(`Statement "${metadata.fileName}" uploaded and stored successfully`);
-            
+
             // If the user wants to see the uploaded documents, we can redirect or show a link
             console.log('PDF Public URL:', metadata.publicUrl);
-            
+
             // Optional: Refresh transactions if the upload triggers a background process to parse them
             // fetchTransactions(); 
         } catch (error: any) {
@@ -108,7 +108,7 @@ export default function TransactionsPage() {
     const fetchTransactions = async () => {
         try {
             const { data: { user } } = await supabase.auth.getUser();
-            
+
             if (!user) return;
 
             const { data, error } = await supabase
@@ -140,10 +140,10 @@ export default function TransactionsPage() {
 
     const filteredTransactions = transactions.filter(tx => {
         const matchesSearch = tx.name.toLowerCase().includes(searchQuery.toLowerCase());
-        const matchesCategory = filterCategory === "All" 
-            ? true 
-            : filterCategory === "Income" 
-                ? tx.amount > 0 
+        const matchesCategory = filterCategory === "All"
+            ? true
+            : filterCategory === "Income"
+                ? tx.amount > 0
                 : tx.amount < 0; // Expense
         return matchesSearch && matchesCategory;
     });
@@ -167,8 +167,8 @@ export default function TransactionsPage() {
                         accept=".pdf"
                         className="hidden"
                     />
-                    <Button 
-                        className="gap-2 shrink-0" 
+                    <Button
+                        className="gap-2 shrink-0"
                         onClick={() => fileInputRef.current?.click()}
                         disabled={uploading}
                     >
@@ -260,7 +260,15 @@ export default function TransactionsPage() {
                                                     <div className="w-10 h-10 rounded-xl bg-muted/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-background transition-all">
                                                         <Icon size={18} />
                                                     </div>
-                                                    <span className="font-semibold text-sm">{tx.name}</span>
+                                                    <span className="font-semibold text-sm">
+                                                        {(() => {
+                                                            const parts = tx.name.split('-');
+                                                            if (parts.length > 2) {
+                                                                return parts.slice(0, 2).join('-').trim();
+                                                            }
+                                                            return tx.name;
+                                                        })()}
+                                                    </span>
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4">
@@ -305,8 +313,8 @@ export default function TransactionsPage() {
                     >
                         <div className={cn(
                             "flex items-center gap-3 px-6 py-4 rounded-2xl shadow-lg border backdrop-blur-md",
-                            snackbar.type === 'success' 
-                                ? "bg-secondary/10 border-secondary/20 text-secondary" 
+                            snackbar.type === 'success'
+                                ? "bg-secondary/10 border-secondary/20 text-secondary"
                                 : "bg-accent/10 border-accent/20 text-accent"
                         )}>
                             {snackbar.type === 'success' ? <CheckCircle2 size={20} /> : <XCircle size={20} />}
