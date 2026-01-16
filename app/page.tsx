@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { OverviewCard } from "@/components/dashboard/OverviewCard";
 import { RecentTransactions } from "@/components/dashboard/RecentTransactions";
 import { SavingsGoal } from "@/components/dashboard/SavingsGoal";
@@ -12,22 +12,85 @@ import {
   Search,
   Bell,
   Calendar,
-  TrendingUp
+  TrendingUp,
+  Loader2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Progress } from "@/components/ui/Progress";
 import { Badge } from "@/components/ui/Badge";
+import { supabase } from "@/lib/supabase";
 
 export default function Home() {
+  const [loading, setLoading] = useState(true);
+  const [userName, setUserName] = useState("User");
+  const [stats, setStats] = useState({
+    netWorth: 0,
+    totalIncome: 0,
+    totalExpenses: 0,
+  });
+
+  useEffect(() => {
+    fetchFinancialData();
+  }, []);
+
+  const fetchFinancialData = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      if (user.user_metadata?.full_name) {
+        setUserName(user.user_metadata.full_name.split(' ')[0]);
+      } else if (user.email) {
+        setUserName(user.email.split('@')[0]);
+      }
+
+      const { data: transactions, error } = await supabase
+        .from('transactions')
+        .select('amount, type')
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+
+      let income = 0;
+      let expenses = 0;
+
+      transactions?.forEach(tx => {
+        const amount = Number(tx.amount);
+        if (tx.type === 'credit') {
+          income += amount;
+        } else if (tx.type === 'debit') {
+          expenses += amount;
+        }
+      });
+
+      setStats({
+        netWorth: income - expenses,
+        totalIncome: income,
+        totalExpenses: expenses,
+      });
+    } catch (error) {
+      console.error('Error fetching financial data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      maximumFractionDigits: 0,
+    }).format(amount);
+  };
   return (
     <div className="space-y-10">
       {/* Header */}
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Financial Overview</h1>
-          <p className="text-muted font-medium mt-1">Welcome back, Kaustubh! Here's what's happening today.</p>
+          <p className="text-muted font-medium mt-1">Welcome back, {userName}! Here's what's happening today.</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="hidden sm:flex items-center gap-2 bg-muted/5 border border-border px-4 py-2 rounded-xl text-sm font-medium">
@@ -47,28 +110,36 @@ export default function Home() {
 
       {/* Overview Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        <OverviewCard
-          title="Total Net Worth"
-          amount="₹24,50,000"
-          change="+₹45,200"
-          trend="up"
-          icon={Wallet}
-          variant="primary"
-        />
-        <OverviewCard
-          title="Total Income"
-          amount="₹1,85,400"
-          change="+12.5%"
-          trend="up"
-          icon={ArrowUpCircle}
-        />
-        <OverviewCard
-          title="Total Expenses"
-          amount="₹65,200"
-          change="-2.4%"
-          trend="down"
-          icon={ArrowDownCircle}
-        />
+        {loading ? (
+          <div className="col-span-1 sm:col-span-2 lg:col-span-3 flex justify-center py-10">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          </div>
+        ) : (
+          <>
+            <OverviewCard
+              title="Total Net Change"
+              amount={formatCurrency(stats.netWorth)}
+              change="" 
+              trend={stats.netWorth >= 0 ? "up" : "down"}
+              icon={Wallet}
+              variant="primary"
+            />
+            <OverviewCard
+              title="Total Credited"
+              amount={formatCurrency(stats.totalIncome)}
+              change=""
+              trend="up"
+              icon={ArrowUpCircle}
+            />
+            <OverviewCard
+              title="Total Debited"
+              amount={formatCurrency(stats.totalExpenses)}
+              change=""
+              trend="down"
+              icon={ArrowDownCircle}
+            />
+          </>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">

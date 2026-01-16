@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
     Search,
     Filter,
@@ -21,13 +21,17 @@ import {
     Utensils,
     Plane,
     Zap,
-    Gift
+    Gift,
+    CheckCircle2,
+    XCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
+import { PDFHandler } from "@/lib/pdf-handler";
+import { motion, AnimatePresence } from "framer-motion";
 
 // Helper to map category to icon
 const getCategoryIcon = (category: string) => {
@@ -59,12 +63,47 @@ interface Transaction {
 export default function TransactionsPage() {
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [loading, setLoading] = useState(true);
+    const [uploading, setUploading] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const [filterCategory, setFilterCategory] = useState("All");
+    const [snackbar, setSnackbar] = useState<{ show: boolean; message: string; type: 'success' | 'error' }>({
+        show: false,
+        message: '',
+        type: 'success'
+    });
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         fetchTransactions();
     }, []);
+
+    const showMessage = (message: string, type: 'success' | 'error' = 'success') => {
+        setSnackbar({ show: true, message, type });
+        setTimeout(() => setSnackbar(prev => ({ ...prev, show: false })), 3000);
+    };
+
+    const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        try {
+            setUploading(true);
+            const metadata = await PDFHandler.uploadPDF(file);
+            showMessage(`Statement "${metadata.fileName}" uploaded and stored successfully`);
+            
+            // If the user wants to see the uploaded documents, we can redirect or show a link
+            console.log('PDF Public URL:', metadata.publicUrl);
+            
+            // Optional: Refresh transactions if the upload triggers a background process to parse them
+            // fetchTransactions(); 
+        } catch (error: any) {
+            console.error('Error uploading file:', error);
+            showMessage(error.message || 'Error uploading file', 'error');
+        } finally {
+            setUploading(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+    };
 
     const fetchTransactions = async () => {
         try {
@@ -121,9 +160,24 @@ export default function TransactionsPage() {
                         <Download size={18} />
                         Export
                     </Button>
-                    <Button className="gap-2 shrink-0">
-                        <Plus size={18} />
-                        New Transaction
+                    <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleFileUpload}
+                        accept=".pdf"
+                        className="hidden"
+                    />
+                    <Button 
+                        className="gap-2 shrink-0" 
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploading}
+                    >
+                        {uploading ? (
+                            <Loader2 size={18} className="animate-spin" />
+                        ) : (
+                            <Plus size={18} />
+                        )}
+                        {uploading ? "Uploading..." : "Upload Statement"}
                     </Button>
                 </div>
             </header>
@@ -240,6 +294,27 @@ export default function TransactionsPage() {
                     </table>
                 </div>
             </div>
+
+            <AnimatePresence>
+                {snackbar.show && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 50 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 50 }}
+                        className="fixed bottom-8 right-8 z-50"
+                    >
+                        <div className={cn(
+                            "flex items-center gap-3 px-6 py-4 rounded-2xl shadow-lg border backdrop-blur-md",
+                            snackbar.type === 'success' 
+                                ? "bg-secondary/10 border-secondary/20 text-secondary" 
+                                : "bg-accent/10 border-accent/20 text-accent"
+                        )}>
+                            {snackbar.type === 'success' ? <CheckCircle2 size={20} /> : <XCircle size={20} />}
+                            <p className="font-semibold">{snackbar.message}</p>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }

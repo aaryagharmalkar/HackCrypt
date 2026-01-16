@@ -16,7 +16,8 @@ import {
     HelpCircle,
     Menu,
     X,
-    LogOut
+    LogOut,
+    FolderOpen
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
