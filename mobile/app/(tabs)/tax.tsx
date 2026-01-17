@@ -1,350 +1,322 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { supabase } from "@/lib/supabase";
+import TaxChatbot from "@/components/TaxChatbot";
 
-export default function TaxScreen() {
+/* ================= Types ================= */
+
+interface TaxReport {
+  financial_year: string;
+  total_income: number;
+  taxable_amount: number;
+  deduction_total: number;
+  compliance_score: number;
+  missing_documents: string[] | null;
+}
+
+/* ================= Component ================= */
+
+export default function TaxPage() {
+    
+  const [report, setReport] = useState<TaxReport | null>(null);
+  const [loading, setLoading] = useState(true);
+  const complianceScore = report?.compliance_score ?? 0;
+
+
+  useEffect(() => {
+    fetchTaxReport();
+  }, []);
+
+  const fetchTaxReport = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data } = await supabase
+        .from("tax_reports")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .single();
+
+      setReport(data || null);
+    } catch (e) {
+      console.error("Tax fetch error", e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const calculateTax = (taxable = 0) => {
+    if (taxable <= 250000) return 0;
+    if (taxable <= 500000) return (taxable - 250000) * 0.05;
+    if (taxable <= 1000000) return 12500 + (taxable - 500000) * 0.2;
+    return 112500 + (taxable - 1000000) * 0.3;
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.loader}>
+        <ActivityIndicator size="large" color="#10B981" />
+      </View>
+    );
+  }
+
+  const estimatedTax = report ? calculateTax(report.taxable_amount) : 0;
+
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      {/* Header */}
+    <ScrollView contentContainerStyle={styles.container}>
+      {/* ================= Header ================= */}
       <View style={styles.header}>
-        <Text style={styles.title}>Tax Center</Text>
-        <Text style={styles.subtitle}>
-          Automatic tax calculation and saving insights
-        </Text>
+        <View>
+          <Text style={styles.title}>Tax Center</Text>
+          <Text style={styles.subtitle}>
+            Automatic tax calculation & ITR readiness
+          </Text>
+        </View>
 
-        <View style={styles.headerActions}>
-          <TouchableOpacity style={styles.outlineBtn}>
-            <Ionicons name="calculator-outline" size={16} />
-            <Text style={styles.outlineText}>Calculator</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.primaryBtn}>
-            <Ionicons name="document-text-outline" size={16} color="#fff" />
-            <Text style={styles.primaryText}>Prepare ITR</Text>
-          </TouchableOpacity>
+        <View style={styles.actions}>
+          <HeaderButton icon="calculator-outline" label="Calculator" />
+          <HeaderButton icon="document-text-outline" label="Prepare ITR" filled />
         </View>
       </View>
 
-      {/* Tax Summary */}
+      {/* ================= Summary ================= */}
       <View style={styles.summaryCard}>
         <Text style={styles.summaryLabel}>
-          Estimated Tax (FY 2025–26)
+          Estimated Tax ({report?.financial_year || "FY 2025–26"})
         </Text>
 
-        <View style={styles.summaryRow}>
-          <Text style={styles.summaryValue}>₹48,500</Text>
-          <Text style={styles.summaryStatus}>Payable</Text>
-        </View>
-
-        <Text style={styles.summaryNote}>
-          ✓ Calculated using linked bank and investment data
-        </Text>
-
-        <View style={styles.summaryBoxes}>
-          <InfoBox label="Taxable Income" value="₹12,45,000" />
-          <InfoBox label="Deductions Claimed" value="₹1,50,000" highlight />
-        </View>
-      </View>
-
-      {/* Tax Saving */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>
-            Tax Saving Opportunities
+        <View style={styles.amountRow}>
+          <Text style={styles.amount}>
+            ₹{Math.round(estimatedTax).toLocaleString()}
           </Text>
-          <View style={styles.pill}>
-            <Text style={styles.pillText}>
-              ₹1.5L / ₹2L used
-            </Text>
-          </View>
+          <Text style={styles.payable}>Payable</Text>
         </View>
 
-        {[
-          {
-            name: "Public Provident Fund",
-            current: "₹80,000",
-            action: "Invest More",
-          },
-          {
-            name: "ELSS Mutual Funds",
-            current: "₹45,000",
-            action: "Start SIP",
-          },
-          {
-            name: "Health Insurance",
-            current: "₹25,000",
-            action: "Completed",
-            disabled: true,
-          },
-          {
-            name: "NPS (80CCD)",
-            current: "₹0",
-            action: "Start Investing",
-          },
-        ].map((item) => (
-          <View key={item.name} style={styles.card}>
-            <Text style={styles.cardTitle}>{item.name}</Text>
-            <View style={styles.rowBetween}>
-              <Text style={styles.amount}>{item.current}</Text>
-              <TouchableOpacity
-                disabled={item.disabled}
-                style={[
-                  styles.actionBtn,
-                  item.disabled && styles.disabledBtn,
-                ]}
-              >
-                <Text style={styles.actionText}>{item.action}</Text>
-              </TouchableOpacity>
+        <View style={styles.infoRow}>
+          <Ionicons name="checkmark-circle-outline" size={14} color="#34D399" />
+          <Text style={styles.infoText}>
+            Based on linked bank & investments
+          </Text>
+        </View>
+
+        <View style={styles.metaRow}>
+          <MetaBox label="Gross Income" value={report?.total_income} />
+          <MetaBox label="Taxable" value={report?.taxable_amount} />
+          <MetaBox
+            label="Deductions"
+            value={report?.deduction_total}
+            highlight
+          />
+        </View>
+      </View>
+
+      {/* ================= Missing Docs ================= */}
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Missing Documents</Text>
+
+        <View
+  style={[
+    styles.complianceBadge,
+    complianceScore >= 80
+      ? styles.good
+      : complianceScore >= 50
+      ? styles.warn
+      : styles.bad,
+  ]}
+>
+
+          <Ionicons name="shield-checkmark-outline" size={14} />
+          <Text style={styles.complianceText}>
+  {complianceScore}% Compliance
+</Text>
+
+        </View>
+      </View>
+
+      {report?.missing_documents?.length ? (
+        report.missing_documents.map((doc, i) => (
+          <View key={i} style={styles.docRow}>
+            <View style={styles.docIcon}>
+              <Ionicons name="document-text-outline" size={18} color="#DC2626" />
             </View>
+
+            <View style={{ flex: 1 }}>
+              <Text style={styles.docTitle}>{doc}</Text>
+              <Text style={styles.docSub}>Required for filing</Text>
+            </View>
+
+            <TouchableOpacity style={styles.uploadBtn}>
+              <Ionicons name="add-outline" size={16} />
+              <Text style={styles.uploadText}>Upload</Text>
+            </TouchableOpacity>
           </View>
-        ))}
-      </View>
+        ))
+      ) : (
+        <View style={styles.successCard}>
+          <Ionicons
+            name="checkmark-circle-outline"
+            size={40}
+            color="#10B981"
+          />
+          <Text style={styles.successTitle}>All documents uploaded!</Text>
+          <Text style={styles.successSub}>100% tax compliance</Text>
+        </View>
+      )}
 
-      {/* Timeline */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Tax Timeline</Text>
-
-        <Timeline
-          icon="time-outline"
-          label="ITR Filing Deadline"
-          date="July 31, 2026"
-          color="#059669"
-        />
-        <Timeline
-          icon="checkmark-circle-outline"
-          label="Belated Return Filing"
-          date="Dec 31, 2025"
-          color="#22C55E"
-        />
-        <Timeline
-          icon="calendar-outline"
-          label="Tax Saving Deadline"
-          date="March 31, 2026"
-          color="#F59E0B"
-        />
-      </View>
-
-      {/* AI Tip */}
-      <View style={styles.aiCard}>
-        <Ionicons
-          name="shield-checkmark-outline"
-          size={28}
-          color="#fff"
-        />
-        <Text style={styles.aiTitle}>
-          Save up to ₹25,000 more!
-        </Text>
-        <Text style={styles.aiText}>
-          Move ₹50,000 into NPS before March to reduce tax by
-          ₹15,450 instantly.
-        </Text>
-        <TouchableOpacity style={styles.aiBtn}>
-          <Text style={styles.aiBtnText}>Show Me How →</Text>
-        </TouchableOpacity>
-      </View>
+      {/* ================= Chatbot ================= */}
+      <TaxChatbot />
     </ScrollView>
   );
 }
 
-/* ---------------- COMPONENTS ---------------- */
+/* ================= Small Components ================= */
 
-function InfoBox({
-  label,
-  value,
-  highlight,
-}: {
-  label: string;
-  value: string;
-  highlight?: boolean;
-}) {
+function HeaderButton({ icon, label, filled }: any) {
   return (
-    <View style={[styles.infoBox, highlight && styles.highlight]}>
-      <Text style={styles.infoLabel}>{label}</Text>
-      <Text style={styles.infoValue}>{value}</Text>
+    <TouchableOpacity
+      style={[styles.headerBtn, filled && styles.headerBtnFilled]}
+    >
+      <Ionicons
+        name={icon}
+        size={16}
+        color={filled ? "#fff" : "#0F172A"}
+      />
+      <Text style={[styles.headerBtnText, filled && { color: "#fff" }]}>
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+function MetaBox({ label, value, highlight }: any) {
+  return (
+    <View style={styles.metaBox}>
+      <Text style={styles.metaLabel}>{label}</Text>
+      <Text style={[styles.metaValue, highlight && { color: "#10B981" }]}>
+        ₹{Number(value || 0).toLocaleString()}
+      </Text>
     </View>
   );
 }
 
-function Timeline({
-  icon,
-  label,
-  date,
-  color,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  date: string;
-  color: string;
-}) {
-  return (
-    <View style={styles.timelineRow}>
-      <View style={[styles.timelineIcon, { backgroundColor: color + "20" }]}>
-        <Ionicons name={icon} size={18} color={color} />
-      </View>
-      <View>
-        <Text style={styles.timelineLabel}>{label}</Text>
-        <Text style={styles.timelineDate}>{date}</Text>
-      </View>
-    </View>
-  );
-}
-
-/* ---------------- STYLES ---------------- */
+/* ================= Styles ================= */
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, backgroundColor: "#fff" },
+  container: { padding: 16, paddingBottom: 40 },
+  loader: { flex: 1, justifyContent: "center", alignItems: "center" },
 
   header: { marginBottom: 20 },
-  title: { fontSize: 26, fontWeight: "700" },
-  subtitle: { color: "#6B7280", marginTop: 4 },
+  title: { fontSize: 26, fontWeight: "800" },
+  subtitle: { fontSize: 13, color: "#64748B", marginTop: 4 },
 
-  headerActions: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 14,
-  },
-
-  outlineBtn: {
+  actions: { flexDirection: "row", gap: 10, marginTop: 12 },
+  headerBtn: {
     flexDirection: "row",
     gap: 6,
     padding: 10,
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: "#E5E7EB",
   },
-  outlineText: { fontWeight: "600" },
-
-  primaryBtn: {
-    flexDirection: "row",
-    gap: 6,
-    padding: 10,
-    borderRadius: 12,
-    backgroundColor: "#059669",
-  },
-  primaryText: { color: "#fff", fontWeight: "600" },
+  headerBtnFilled: { backgroundColor: "#0F172A", borderColor: "#0F172A" },
+  headerBtnText: { fontSize: 12, fontWeight: "700" },
 
   summaryCard: {
-    backgroundColor: "#F9FAFB",
+    backgroundColor: "#020617",
+    borderRadius: 22,
     padding: 20,
-    borderRadius: 20,
-    marginBottom: 20,
+    marginBottom: 24,
   },
   summaryLabel: {
-    fontSize: 12,
-    color: "#6B7280",
-    fontWeight: "700",
-    textTransform: "uppercase",
+    fontSize: 11,
+    color: "#94A3B8",
+    fontWeight: "800",
   },
-  summaryRow: { flexDirection: "row", alignItems: "baseline", gap: 8 },
-  summaryValue: { fontSize: 32, fontWeight: "800" },
-  summaryStatus: { color: "#22C55E", fontWeight: "700" },
-  summaryNote: { fontSize: 12, color: "#6B7280", marginTop: 6 },
+  amountRow: { flexDirection: "row", gap: 8, alignItems: "baseline" },
+  amount: { fontSize: 34, fontWeight: "900", color: "#fff" },
+  payable: { fontSize: 12, color: "#34D399", fontWeight: "700" },
 
-  summaryBoxes: {
-    flexDirection: "row",
-    gap: 12,
-    marginTop: 14,
-  },
-  infoBox: {
+  infoRow: { flexDirection: "row", gap: 6, marginTop: 8 },
+  infoText: { fontSize: 12, color: "#94A3B8" },
+
+  metaRow: { flexDirection: "row", gap: 10, marginTop: 16 },
+  metaBox: {
     flex: 1,
+    backgroundColor: "rgba(255,255,255,0.08)",
     padding: 12,
     borderRadius: 14,
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
   },
-  highlight: { borderColor: "#22C55E" },
-  infoLabel: { fontSize: 10, color: "#6B7280", fontWeight: "700" },
-  infoValue: { fontSize: 16, fontWeight: "700", marginTop: 4 },
+  metaLabel: { fontSize: 10, color: "#94A3B8", fontWeight: "700" },
+  metaValue: { fontSize: 15, fontWeight: "800", color: "#fff" },
 
-  section: { marginBottom: 20 },
   sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 10,
-  },
-  sectionTitle: { fontSize: 18, fontWeight: "700" },
-
-  pill: {
-    backgroundColor: "#EEF2FF",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  pillText: { fontSize: 10, fontWeight: "700", color: "#059669" },
-
-  card: {
-    backgroundColor: "#F9FAFB",
-    padding: 16,
-    borderRadius: 16,
     marginBottom: 12,
-  },
-  cardTitle: { fontSize: 16, fontWeight: "700", marginBottom: 10 },
-
-  rowBetween: {
-    flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
   },
-  amount: { fontWeight: "700" },
+  sectionTitle: { fontSize: 18, fontWeight: "800" },
 
-  actionBtn: {
+  complianceBadge: {
+    flexDirection: "row",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  complianceText: { fontSize: 11, fontWeight: "800" },
+  good: { backgroundColor: "#DCFCE7", color: "#065F46" },
+  warn: { backgroundColor: "#FEF3C7" },
+  bad: { backgroundColor: "#FEE2E2" },
+
+  docRow: {
+    flexDirection: "row",
+    gap: 12,
+    padding: 14,
+    borderRadius: 16,
+    backgroundColor: "#fff",
+    marginBottom: 10,
+  },
+  docIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: "#FEE2E2",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  docTitle: { fontSize: 14, fontWeight: "800" },
+  docSub: { fontSize: 12, color: "#64748B" },
+
+  uploadBtn: {
+    flexDirection: "row",
+    gap: 4,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
   },
-  disabledBtn: { opacity: 0.5 },
-  actionText: { fontSize: 10, fontWeight: "700" },
+  uploadText: { fontSize: 11, fontWeight: "700" },
 
-  timelineRow: {
-    flexDirection: "row",
-    gap: 12,
-    marginBottom: 12,
+  successCard: {
+    padding: 24,
+    borderRadius: 22,
+    backgroundColor: "#ECFDF5",
     alignItems: "center",
+    marginBottom: 20,
   },
-  timelineIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  timelineLabel: { fontWeight: "700" },
-  timelineDate: { fontSize: 12, color: "#6B7280" },
-
-  aiCard: {
-    backgroundColor: "#22C55E",
-    padding: 20,
-    borderRadius: 20,
-    marginBottom: 40,
-  },
-  aiTitle: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: "#fff",
-    marginTop: 8,
-  },
-  aiText: {
-    fontSize: 13,
-    color: "#ECFDF5",
-    marginVertical: 8,
-  },
-  aiBtn: {
-    backgroundColor: "rgba(255,255,255,0.2)",
-    paddingVertical: 10,
-    borderRadius: 12,
-  },
-  aiBtnText: {
-    textAlign: "center",
-    color: "#fff",
-    fontWeight: "700",
-  },
+  successTitle: { fontSize: 16, fontWeight: "900", marginTop: 10 },
+  successSub: { fontSize: 12, color: "#065F46", marginTop: 4 },
 });
