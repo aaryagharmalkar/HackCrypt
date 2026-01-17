@@ -2,617 +2,744 @@
 
 import React, { useEffect, useState } from "react";
 import {
-  Plus,
-  Loader2,
-  Lightbulb,
-  Zap,
-  TrendingUp,
-  AlertCircle,
-  Target,
-  PiggyBank,
-  Wallet
+    Target,
+    TrendingUp,
+    AlertCircle,
+    ArrowUpRight,
+    ArrowDownCircle,
+    Plus,
+    Pencil,
+    Trash2,
+    Loader2
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
-import { supabase } from "@/lib/supabase";
-import { Budget, Goal } from "@/lib/database.types";
-import { BudgetCard } from "@/components/budgeting/BudgetCard";
-import { GoalCard } from "@/components/budgeting/GoalCard";
-import { BudgetGoalForm } from "@/components/budgeting/BudgetGoalForm";
-import { IncomeCalculator } from "@/components/budgeting/IncomeCalculator";
-import { StrategySelector } from "@/components/budgeting/StrategySelector";
-import { InsightsModal } from "@/components/budgeting/InsightsModal";
+import { Progress } from "@/components/ui/Progress";
+import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { Input } from "@/components/ui/Input";
+import { cn } from "@/lib/utils";
+import { supabase } from "@/lib/supabase";
 
-interface BudgetWithSpent extends Budget {
-  spent: number;
+interface Budget {
+    id: string;
+    name: string;
+    limit_amount: number;
+    spent?: number;
+    color: string;
 }
 
-interface InsightData {
-  topCategory: string;
-  topAmount: number;
-  totalDiff: number;
-  biggestSpike: string;
-  savingPotential: number;
-  overspending?: {
+interface Goal {
+    id: string;
+    name: string;
+    saved_amount: number;
+    target_amount: number;
+    target_date: string;
+    color: string;
+}
+
+interface Transaction {
+    amount: number;
     category: string;
-    percentHigher: number;
-  };
+    type: string;
 }
+
+const COLORS = [
+    { label: "Primary", value: "bg-primary" },
+    { label: "Secondary", value: "bg-secondary" },
+    { label: "Accent", value: "bg-accent" },
+    { label: "Slate", value: "bg-slate-400" },
+    { label: "Amber", value: "bg-amber-500" },
+    { label: "Emerald", value: "bg-emerald-500" },
+    { label: "Rose", value: "bg-rose-500" },
+    { label: "Violet", value: "bg-violet-500" },
+];
 
 export default function BudgetingPage() {
-  const [budgets, setBudgets] = useState<BudgetWithSpent[]>([]);
-  const [goals, setGoals] = useState<Goal[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [monthlyIncome, setMonthlyIncome] = useState(0);
-
-  // Modal States
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [formType, setFormType] = useState<'budget' | 'goal'>('budget');
-  const [editingItem, setEditingItem] = useState<BudgetWithSpent | Goal | null>(null);
-  
-  const [strategyModalOpen, setStrategyModalOpen] = useState(false);
-  const [insightModalOpen, setInsightModalOpen] = useState(false);
-  const [addFundsModalOpen, setAddFundsModalOpen] = useState(false);
-  const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
-  const [fundsAmount, setFundsAmount] = useState("");
-
-  const [insights, setInsights] = useState<InsightData | null>(null);
-
-
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      // Fetch Budgets
-      const { data: budgetsData, error: budgetsError } = await supabase
-        .from('budgets')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: true });
-
-      if (budgetsError) throw budgetsError;
-
-      // Fetch Goals
-      const { data: goalsData, error: goalsError } = await supabase
-        .from('goals')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: true });
-
-      if (goalsError && goalsError.code !== 'PGRST116') throw goalsError;
-
-      // Fetch Transactions (last 90 days)
-      const ninetyDaysAgo = new Date();
-      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-
-      const { data: transactionsData, error: transactionsError } = await supabase
-        .from('transactions')
-        .select('amount, category, type, date')
-        .eq('user_id', user.id)
-        .eq('type', 'debit')
-        .gte('date', ninetyDaysAgo.toISOString());
-
-      if (transactionsError) throw transactionsError;
-
-      // Process budgets with spent amounts
-      const currentMonth = new Date().getMonth();
-      const currentYear = new Date().getFullYear();
-      
-      const processedBudgets = (budgetsData || []).map((budget: Budget) => {
-        const spent = transactionsData
-          ?.filter((t: any) => {
-            const tDate = new Date(t.date);
-            return (
-              tDate.getMonth() === currentMonth &&
-              tDate.getFullYear() === currentYear &&
-              t.category?.toLowerCase().includes(budget.name.toLowerCase())
-            );
-          })
-          .reduce((acc: number, curr: any) => acc + Math.abs(Number(curr.amount)), 0) || 0;
-
-        return { ...budget, spent };
-      });
-
-      setBudgets(processedBudgets);
-      setGoals(goalsData || []);
-
-      // Process insights
-      processInsights(transactionsData || []);
-
-    } catch (error) {
-      console.error("Error fetching data:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-
-  const processInsights = (transactions: any[]) => {
-    const today = new Date();
-    const currentMonth = today.getMonth();
-    const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
-    const currentYear = today.getFullYear();
-    const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
-
-    const thisMonthTx = transactions.filter(t => {
-      const d = new Date(t.date);
-      return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+    const [budgets, setBudgets] = useState<Budget[]>([]);
+    const [goals, setGoals] = useState<Goal[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
+    const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
+    const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
+    const [formData, setFormData] = useState({
+        name: "",
+        limit_amount: "",
+        color: "bg-primary"
     });
-    
-    const lastMonthTx = transactions.filter(t => {
-      const d = new Date(t.date);
-      return d.getMonth() === lastMonth && d.getFullYear() === lastMonthYear;
+    const [goalFormData, setGoalFormData] = useState({
+        name: "",
+        saved_amount: "",
+        target_amount: "",
+        target_date: "",
+        color: "text-primary"
+    });
+    const [saving, setSaving] = useState(false);
+    const [insights, setInsights] = useState({
+        topSpendingCategory: "",
+        topSpendingAmount: 0,
+        nearLimitBudgets: [] as string[],
+        totalBudget: 0,
+        totalSpent: 0,
+        savingPotential: 0
     });
 
-    const thisMonthTotal = thisMonthTx.reduce((acc: number, t: any) => acc + Math.abs(t.amount), 0);
-    const lastMonthTotal = lastMonthTx.reduce((acc: number, t: any) => acc + Math.abs(t.amount), 0);
+    useEffect(() => {
+        fetchData();
+    }, []);
 
-    // Category analysis
-    const catTotals: Record<string, number> = {};
-    thisMonthTx.forEach((t: any) => {
-      const cat = t.category || 'Uncategorised';
-      catTotals[cat] = (catTotals[cat] || 0) + Math.abs(t.amount);
-    });
+    const fetchData = async () => {
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return;
 
-    const topCategory = Object.entries(catTotals).sort((a, b) => b[1] - a[1])[0];
-    const savingPotential = Math.round(thisMonthTotal * 0.1); // 10% potential savings
+            // Fetch budgets
+            const { data: budgetsData, error: budgetsError } = await supabase
+                .from('budgets')
+                .select('*')
+                .eq('user_id', user.id)
+                .order('created_at', { ascending: true });
 
-    // Overspending detection
-    const lastMonthCats: Record<string, number> = {};
-    lastMonthTx.forEach((t: any) => {
-      const cat = t.category || 'Uncategorised';
-      lastMonthCats[cat] = (lastMonthCats[cat] || 0) + Math.abs(t.amount);
-    });
+            if (budgetsError) throw budgetsError;
 
-    let overspending;
-    for (const [cat, amount] of Object.entries(catTotals)) {
-      const lastAmount = lastMonthCats[cat] || 0;
-      if (lastAmount > 0 && amount > lastAmount * 1.2) {
-        const percentHigher = Math.round(((amount - lastAmount) / lastAmount) * 100);
-        overspending = { category: cat, percentHigher };
-        break;
-      }
-    }
+            // Fetch transactions for calculation
+            const { data: transactionsData, error: transactionsError } = await supabase
+                .from('transactions')
+                .select('amount, category, type')
+                .eq('user_id', user.id);
 
-    setInsights({
-      topCategory: topCategory ? topCategory[0] : "None",
-      topAmount: topCategory ? topCategory[1] : 0,
-      totalDiff: thisMonthTotal - lastMonthTotal,
-      biggestSpike: topCategory ? topCategory[0] : "None",
-      savingPotential,
-      overspending
-    });
-  };
+            if (transactionsError) throw transactionsError;
 
+            console.log('Transactions:', transactionsData); // Debug log
 
-  const handleOpenForm = (type: 'budget' | 'goal', item?: BudgetWithSpent | Goal) => {
-    setFormType(type);
-    setEditingItem(item || null);
-    setIsFormOpen(true);
-  };
+            // Calculate spent amount per category
+            const calculatedBudgets = budgetsData.map((budget: any) => {
+                const categoryTransactions = transactionsData?.filter((t: any) => {
+                    // Match category case-insensitively and only count debit transactions
+                    const categoryMatch = t.category?.toLowerCase().trim() === budget.name.toLowerCase().trim();
+                    const isDebit = t.type?.toLowerCase() === 'debit';
+                    return categoryMatch && isDebit;
+                }) || [];
+                
+                console.log(`Budget: ${budget.name}, Matching transactions:`, categoryTransactions); // Debug log
+                
+                const spent = categoryTransactions.reduce((acc: number, curr: any) => {
+                    return acc + Math.abs(Number(curr.amount));
+                }, 0);
+                
+                return {
+                    ...budget,
+                    spent: spent
+                };
+            });
 
-  const handleSaveItem = async (formData: any) => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("No user found");
+            setBudgets(calculatedBudgets);
 
-      const commonData = {
-        name: formData.name,
-        color: formData.color,
-        user_id: user.id
-      };
+            // Fetch goals
+            const { data: goalsData, error: goalsError } = await supabase
+                .from('goals')
+                .select('*')
+                .eq('user_id', user.id)
+                .order('created_at', { ascending: true });
 
-      if (formType === 'budget') {
-        const budgetData = {
-          ...commonData,
-          limit_amount: parseFloat(formData.amount),
-          period: formData.period
-        };
+            if (goalsError) throw goalsError;
+            setGoals(goalsData || []);
 
-        if (editingItem) {
-          await supabase.from('budgets').update(budgetData).eq('id', editingItem.id);
-        } else {
-          await supabase.from('budgets').insert([budgetData]);
+            // Calculate insights
+            if (calculatedBudgets.length > 0) {
+                const totalBudget = calculatedBudgets.reduce((sum, b) => sum + b.limit_amount, 0);
+                const totalSpent = calculatedBudgets.reduce((sum, b) => sum + (b.spent || 0), 0);
+                
+                // Find top spending category
+                const topSpender = calculatedBudgets.reduce((max, b) => 
+                    (b.spent || 0) > (max.spent || 0) ? b : max
+                );
+                
+                // Find budgets near limit (>85%)
+                const nearLimit = calculatedBudgets
+                    .filter(b => ((b.spent || 0) / b.limit_amount) > 0.85)
+                    .map(b => b.name);
+                
+                // Calculate saving potential (difference between budget and spent)
+                const savingPotential = totalBudget - totalSpent;
+                
+                setInsights({
+                    topSpendingCategory: topSpender.name,
+                    topSpendingAmount: topSpender.spent || 0,
+                    nearLimitBudgets: nearLimit,
+                    totalBudget,
+                    totalSpent,
+                    savingPotential: savingPotential > 0 ? savingPotential : 0
+                });
+            }
+        } catch (error) {
+            console.error("Error fetching data:", error);
+        } finally {
+            setLoading(false);
         }
-      } else {
-        const goalData = {
-          ...commonData,
-          target_amount: parseFloat(formData.amount),
-          saved_amount: parseFloat(formData.saved_amount || '0'),
-          target_date: formData.date
-        };
+    };
 
-        if (editingItem) {
-          await supabase.from('goals').update(goalData).eq('id', editingItem.id);
+    const handleOpenModal = (budget?: Budget) => {
+        if (budget) {
+            setEditingBudget(budget);
+            setFormData({
+                name: budget.name,
+                limit_amount: budget.limit_amount.toString(),
+                color: budget.color
+            });
         } else {
-          await supabase.from('goals').insert([goalData]);
+            setEditingBudget(null);
+            setFormData({
+                name: "",
+                limit_amount: "",
+                color: "bg-primary"
+            });
         }
-      }
+        setIsModalOpen(true);
+    };
 
-      await fetchData();
-      setIsFormOpen(false);
-      setEditingItem(null);
-    } catch (error) {
-      console.error("Error saving:", error);
-      alert(`Failed to save ${formType}. Please ensure all tables exist in your database.`);
-    }
-  };
+    const handleSave = async () => {
+        if (!formData.name || !formData.limit_amount) return;
+        
+        setSaving(true);
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) throw new Error("No user found");
 
-  const handleDelete = async (id: string, type: 'budget' | 'goal') => {
-    if (!confirm(`Are you sure you want to delete this ${type}?`)) return;
-    
-    try {
-      await supabase.from(type === 'budget' ? 'budgets' : 'goals').delete().eq('id', id);
-      await fetchData();
-    } catch (error) {
-      console.error("Error deleting:", error);
-    }
-  };
+            const budgetData = {
+                name: formData.name,
+                limit_amount: parseFloat(formData.limit_amount),
+                color: formData.color,
+                user_id: user.id
+            };
 
-  const handleSelectStrategy = (strategy: any) => {
-    setStrategyModalOpen(false);
-    setFormType(strategy.type);
-    setEditingItem(null);
-    
-    // Pre-populate form through opening it
-    setTimeout(() => {
-      setIsFormOpen(true);
-    }, 100);
-  };
+            if (editingBudget) {
+                const { error } = await supabase
+                    .from('budgets')
+                    .update(budgetData)
+                    .eq('id', editingBudget.id);
+                if (error) throw error;
+            } else {
+                const { error } = await supabase
+                    .from('budgets')
+                    .insert([budgetData]);
+                if (error) throw error;
+            }
 
-  const handleAddFunds = async () => {
-    if (!selectedGoal || !fundsAmount) return;
+            await fetchData();
+            setIsModalOpen(false);
+        } catch (error) {
+            console.error("Error saving budget:", error);
+        } finally {
+            setSaving(false);
+        }
+    };
 
-    try {
-      const newSavedAmount = selectedGoal.saved_amount + parseFloat(fundsAmount);
-      
-      await supabase
-        .from('goals')
-        .update({ saved_amount: newSavedAmount })
-        .eq('id', selectedGoal.id);
+    const handleDelete = async (id: string) => {
+        if (!confirm("Are you sure you want to delete this budget?")) return;
+        
+        try {
+            const { error } = await supabase
+                .from('budgets')
+                .delete()
+                .eq('id', id);
+            
+            if (error) throw error;
+            await fetchData();
+        } catch (error) {
+            console.error("Error deleting budget:", error);
+        }
+    };
 
-      await fetchData();
-      setAddFundsModalOpen(false);
-      setSelectedGoal(null);
-      setFundsAmount("");
-    } catch (error) {
-      console.error("Error adding funds:", error);
-    }
-  };
+    const handleOpenGoalModal = (goal?: Goal) => {
+        if (goal) {
+            setEditingGoal(goal);
+            setGoalFormData({
+                name: goal.name,
+                saved_amount: goal.saved_amount.toString(),
+                target_amount: goal.target_amount.toString(),
+                target_date: goal.target_date,
+                color: goal.color
+            });
+        } else {
+            setEditingGoal(null);
+            setGoalFormData({
+                name: "",
+                saved_amount: "",
+                target_amount: "",
+                target_date: "",
+                color: "text-primary"
+            });
+        }
+        setIsGoalModalOpen(true);
+    };
 
-  const openAddFundsModal = (goal: Goal) => {
-    setSelectedGoal(goal);
-    setAddFundsModalOpen(true);
-  };
+    const handleSaveGoal = async () => {
+        if (!goalFormData.name || !goalFormData.saved_amount || !goalFormData.target_amount || !goalFormData.target_date) return;
+        
+        setSaving(true);
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) throw new Error("No user found");
 
-  // Calculate statistics
-  const totalBudgeted = budgets.reduce((acc, b) => acc + b.limit_amount, 0);
-  const totalSpent = budgets.reduce((acc, b) => acc + b.spent, 0);
-  const budgetUtilization = totalBudgeted > 0 ? (totalSpent / totalBudgeted) * 100 : 0;
-  
-  const totalGoalTarget = goals.reduce((acc, g) => acc + g.target_amount, 0);
-  const totalGoalSaved = goals.reduce((acc, g) => acc + g.saved_amount, 0);
-  const goalProgress = totalGoalTarget > 0 ? (totalGoalSaved / totalGoalTarget) * 100 : 0;
+            const goalData = {
+                name: goalFormData.name,
+                saved_amount: parseFloat(goalFormData.saved_amount),
+                target_amount: parseFloat(goalFormData.target_amount),
+                target_date: goalFormData.target_date,
+                color: goalFormData.color,
+                user_id: user.id
+            };
 
-  return (
-    <div className="space-y-8">
-      {/* Header */}
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Budgets & Goals</h1>
-          <p className="text-muted font-medium mt-1">
-            Plan your financial future and track your progress
-          </p>
-        </div>
-        <div className="flex items-center gap-3 flex-wrap">
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className="gap-2" 
-            onClick={() => setInsightModalOpen(true)}
-          >
-            <Lightbulb size={18} className="text-amber-500" />
-            Insights
-          </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className="gap-2 border-dashed border-primary/50 text-primary hover:bg-primary/5"
-            onClick={() => setStrategyModalOpen(true)}
-          >
-            <Zap size={18} />
-            Strategies
-          </Button>
-          <Button 
-            size="sm" 
-            className="gap-2"
-            onClick={() => handleOpenForm('budget')}
-          >
-            <Plus size={18} />
-            New Budget
-          </Button>
-        </div>
-      </header>
+            if (editingGoal) {
+                const { error } = await supabase
+                    .from('goals')
+                    .update(goalData)
+                    .eq('id', editingGoal.id);
+                if (error) throw error;
+            } else {
+                const { error } = await supabase
+                    .from('goals')
+                    .insert([goalData]);
+                if (error) throw error;
+            }
 
-      {/* Overview Stats */}
-      {!loading && (budgets.length > 0 || goals.length > 0) && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card className="border-none shadow-md bg-gradient-to-br from-blue-500/10 to-cyan-500/10">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-3">
-                <div className="p-2 bg-blue-500/20 rounded-xl">
-                  <Wallet size={20} className="text-blue-600" />
+            await fetchData();
+            setIsGoalModalOpen(false);
+        } catch (error) {
+            console.error("Error saving goal:", error);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleDeleteGoal = async (id: string) => {
+        if (!confirm("Are you sure you want to delete this goal?")) return;
+        
+        try {
+            const { error } = await supabase
+                .from('goals')
+                .delete()
+                .eq('id', id);
+            
+            if (error) throw error;
+            await fetchData();
+        } catch (error) {
+            console.error("Error deleting goal:", error);
+        }
+    };
+
+    return (
+        <div className="space-y-10">
+            <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight">Budgets & Goals</h1>
+                    <p className="text-muted font-medium mt-1">Plan your future and stay on track with your spending.</p>
                 </div>
-                <span className="text-2xl font-black text-blue-600">
-                  {budgetUtilization.toFixed(0)}%
-                </span>
-              </div>
-              <p className="text-sm font-bold text-foreground">Budget Used</p>
-              <p className="text-xs text-muted mt-1">
-                ₹{totalSpent.toLocaleString()} of ₹{totalBudgeted.toLocaleString()}
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="border-none shadow-md bg-gradient-to-br from-emerald-500/10 to-teal-500/10">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-3">
-                <div className="p-2 bg-emerald-500/20 rounded-xl">
-                  <Target size={20} className="text-emerald-600" />
+                <div className="flex items-center gap-3">
+                    <Button size="sm" className="gap-2 shrink-0" onClick={() => handleOpenModal()}>
+                        <Plus size={18} />
+                        Create New Budget
+                    </Button>
                 </div>
-                <span className="text-2xl font-black text-emerald-600">
-                  {goalProgress.toFixed(0)}%
-                </span>
-              </div>
-              <p className="text-sm font-bold text-foreground">Goals Progress</p>
-              <p className="text-xs text-muted mt-1">
-                ₹{totalGoalSaved.toLocaleString()} of ₹{totalGoalTarget.toLocaleString()}
-              </p>
-            </CardContent>
-          </Card>
+            </header>
 
-          <Card className="border-none shadow-md bg-gradient-to-br from-violet-500/10 to-purple-500/10">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-3">
-                <div className="p-2 bg-violet-500/20 rounded-xl">
-                  <PiggyBank size={20} className="text-violet-600" />
-                </div>
-                <span className="text-2xl font-black text-violet-600">
-                  {goals.length}
-                </span>
-              </div>
-              <p className="text-sm font-bold text-foreground">Active Goals</p>
-              <p className="text-xs text-muted mt-1">
-                {budgets.length} budget categories
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* Main Content */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Left Column - Budgets & Income */}
-        <div className="lg:col-span-7 space-y-6">
-          {/* Monthly Budgets */}
-          <Card className="border-none shadow-md">
-            <CardHeader>
-              <CardTitle>Monthly Budgets</CardTitle>
-              <CardDescription>Track spending against category limits</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {loading ? (
-                <div className="flex justify-center py-8">
-                  <Loader2 className="animate-spin text-muted" />
-                </div>
-              ) : budgets.length === 0 ? (
-                <div className="text-center py-12">
-                  <div className="w-16 h-16 bg-muted/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Wallet size={32} className="text-muted" />
-                  </div>
-                  <p className="text-muted font-medium mb-4">No budgets created yet</p>
-                  <Button 
-                    onClick={() => handleOpenForm('budget')}
-                    className="gap-2"
-                  >
-                    <Plus size={16} />
-                    Create Your First Budget
-                  </Button>
-                </div>
-              ) : (
-                budgets.map((budget) => (
-                  <BudgetCard
-                    key={budget.id}
-                    budget={budget}
-                    onEdit={() => handleOpenForm('budget', budget)}
-                    onDelete={() => handleDelete(budget.id, 'budget')}
-                  />
-                ))
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Smart Alerts */}
-          {insights && insights.savingPotential > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Card className="border-none shadow-md bg-secondary/5 border border-secondary/10">
-                <CardContent className="p-5">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="p-2 bg-secondary/10 rounded-xl text-secondary">
-                      <TrendingUp size={18} />
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                {/* Budget Summary Card */}
+                {budgets.length > 0 && (
+                    <div className="lg:col-span-12">
+                        <Card className="border-none shadow-md bg-gradient-to-br from-primary/10 via-secondary/5 to-accent/10">
+                            <CardContent className="p-6">
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                                    <div>
+                                        <p className="text-xs font-bold text-muted uppercase tracking-wider mb-2">Total Budget</p>
+                                        <p className="text-2xl font-black">₹{insights.totalBudget.toLocaleString()}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-bold text-muted uppercase tracking-wider mb-2">Total Spent</p>
+                                        <p className="text-2xl font-black text-primary">₹{insights.totalSpent.toLocaleString()}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-bold text-muted uppercase tracking-wider mb-2">Remaining</p>
+                                        <p className="text-2xl font-black text-secondary">₹{insights.savingPotential.toLocaleString()}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-bold text-muted uppercase tracking-wider mb-2">Active Budgets</p>
+                                        <p className="text-2xl font-black">{budgets.length}</p>
+                                        {insights.nearLimitBudgets.length > 0 && (
+                                            <Badge variant="warning" className="mt-2 text-[10px]">
+                                                {insights.nearLimitBudgets.length} Near Limit
+                                            </Badge>
+                                        )}
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
                     </div>
-                    <h3 className="font-bold text-sm">Saving Potential</h3>
-                  </div>
-                  <p className="text-xs text-muted leading-relaxed">
-                    You could save <span className="text-foreground font-bold">₹{insights.savingPotential.toLocaleString()}</span> more this month by optimizing spending.
-                  </p>
-                </CardContent>
-              </Card>
+                )}
 
-              {insights.overspending && (
-                <Card className="border-none shadow-md bg-amber-500/5 border border-amber-500/10">
-                  <CardContent className="p-5">
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="p-2 bg-amber-500/10 rounded-xl text-amber-600">
-                        <AlertCircle size={18} />
-                      </div>
-                      <h3 className="font-bold text-sm">Alert</h3>
+                {/* Monthly Budgets */}
+                <div className="lg:col-span-8 space-y-6">
+                    <Card className="border-none shadow-md">
+                        <CardHeader>
+                            <CardTitle>Monthly Category Budgets</CardTitle>
+                            <CardDescription>Track your spending against your set limits.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-8">
+                            {loading ? (
+                                <div className="flex justify-center py-8">
+                                    <Loader2 className="animate-spin text-muted" />
+                                </div>
+                            ) : budgets.length === 0 ? (
+                                <div className="text-center py-8 text-muted">
+                                    <p>No budgets created yet. Start by creating one!</p>
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                                        <div className="flex gap-2">
+                                            <AlertCircle size={16} className="text-blue-600 mt-0.5 flex-shrink-0" />
+                                            <div className="text-xs text-blue-800">
+                                                <p className="font-bold mb-1">How Budget Tracking Works:</p>
+                                                <p className="mb-2">Budget spending is automatically calculated from your transactions. The category in your transaction must match the budget name.</p>
+                                                <p className="font-semibold">Example:</p>
+                                                <ul className="list-disc ml-4 mt-1 space-y-1">
+                                                    <li>Budget name: "Travel" → Counts transactions with category "Travel"</li>
+                                                    <li>Budget name: "Food" → Counts transactions with category "Food"</li>
+                                                </ul>
+                                                <p className="mt-2 text-blue-700 font-semibold">💡 Tip: Check the browser console (F12) to see which transactions are being matched to each budget.</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {budgets.map((budget) => {
+                                        const spent = budget.spent || 0;
+                                        const percentage = Math.min((spent / budget.limit_amount) * 100, 100);
+                                        const isNearLimit = percentage > 85;
+
+                                        return (
+                                            <div key={budget.id} className="space-y-3 group">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-3">
+                                                        <span className="font-bold text-sm">{budget.name}</span>
+                                                        {isNearLimit && (
+                                                            <Badge variant="warning" className="text-[10px] py-0">Near Limit</Badge>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex items-center gap-4">
+                                                        <span className="text-xs font-medium text-muted">
+                                                            ₹{spent.toLocaleString()} / <span className="text-foreground">₹{budget.limit_amount.toLocaleString()}</span>
+                                                        </span>
+                                                        <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                                                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleOpenModal(budget)}>
+                                                                <Pencil size={12} />
+                                                            </Button>
+                                                            <Button variant="ghost" size="icon" className="h-6 w-6 text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => handleDelete(budget.id)}>
+                                                                <Trash2 size={12} />
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="h-2.5 w-full bg-muted/10 rounded-full overflow-hidden">
+                                                    <div
+                                                        className={cn("h-full transition-all duration-700", budget.color)}
+                                                        style={{ width: `${percentage}%` }}
+                                                    />
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </>
+                            )}
+                        </CardContent>
+                    </Card>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <Card className="border-none shadow-md bg-secondary/5 border border-secondary/10">
+                            <CardContent className="p-6">
+                                <div className="flex items-center gap-3 mb-4">
+                                    <div className="p-2 bg-secondary/10 rounded-xl text-secondary">
+                                        <TrendingUp size={20} />
+                                    </div>
+                                    <h3 className="font-bold">Budget Overview</h3>
+                                </div>
+                                {budgets.length === 0 ? (
+                                    <p className="text-sm text-muted leading-relaxed">
+                                        Create budgets to see your spending overview and track your financial health.
+                                    </p>
+                                ) : (
+                                    <>
+                                        <p className="text-sm text-muted leading-relaxed">
+                                            You've spent <span className="text-foreground font-bold">₹{insights.totalSpent.toLocaleString()}</span> out of <span className="text-foreground font-bold">₹{insights.totalBudget.toLocaleString()}</span> total budget.
+                                            {insights.savingPotential > 0 && (
+                                                <> You're on track to save <span className="text-secondary font-bold">₹{insights.savingPotential.toLocaleString()}</span> this month!</>
+                                            )}
+                                        </p>
+                                        <div className="mt-4 p-3 bg-secondary/10 rounded-lg">
+                                            <p className="text-xs font-bold text-secondary">Budget Utilization</p>
+                                            <p className="text-2xl font-black text-secondary mt-1">
+                                                {((insights.totalSpent / insights.totalBudget) * 100).toFixed(1)}%
+                                            </p>
+                                        </div>
+                                    </>
+                                )}
+                            </CardContent>
+                        </Card>
+
+                        <Card className="border-none shadow-md bg-primary/5 border border-primary/10">
+                            <CardContent className="p-6">
+                                <div className="flex items-center gap-3 mb-4">
+                                    <div className="p-2 bg-primary/10 rounded-xl text-primary">
+                                        <AlertCircle size={20} />
+                                    </div>
+                                    <h3 className="font-bold">Spending Alert</h3>
+                                </div>
+                                {budgets.length === 0 ? (
+                                    <p className="text-sm text-muted leading-relaxed">
+                                        Set up budgets to receive alerts when you're approaching your spending limits.
+                                    </p>
+                                ) : insights.nearLimitBudgets.length > 0 ? (
+                                    <>
+                                        <p className="text-sm text-muted leading-relaxed">
+                                            You're near the limit on <span className="text-accent font-bold">{insights.nearLimitBudgets.join(", ")}</span>. Consider reviewing your spending in {insights.nearLimitBudgets.length > 1 ? 'these categories' : 'this category'}.
+                                        </p>
+                                        <Button variant="ghost" className="w-full mt-4 text-xs font-bold text-primary hover:bg-primary/5">
+                                            Review Spending
+                                        </Button>
+                                    </>
+                                ) : insights.topSpendingCategory ? (
+                                    <>
+                                        <p className="text-sm text-muted leading-relaxed">
+                                            Your highest spending is in <span className="text-primary font-bold">{insights.topSpendingCategory}</span> with <span className="text-foreground font-bold">₹{insights.topSpendingAmount.toLocaleString()}</span> spent.
+                                        </p>
+                                        <div className="mt-4 p-3 bg-green-50 rounded-lg border border-green-200">
+                                            <p className="text-xs font-bold text-green-700">✓ All budgets are healthy</p>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <p className="text-sm text-muted leading-relaxed">
+                                        No spending detected yet. Start adding transactions to track your budget usage.
+                                    </p>
+                                )}
+                            </CardContent>
+                        </Card>
                     </div>
-                    <p className="text-xs text-muted leading-relaxed">
-                      <span className="text-amber-600 font-bold">{insights.overspending.percentHigher}% higher</span> spending on {insights.overspending.category} than usual.
-                    </p>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Right Column - Goals & Income */}
-        <div className="lg:col-span-5 space-y-6">
-          {/* Financial Goals */}
-          <Card className="border-none shadow-md">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Financial Goals</CardTitle>
-                <Button 
-                  size="sm" 
-                  variant="ghost"
-                  className="gap-2"
-                  onClick={() => handleOpenForm('goal')}
-                >
-                  <Plus size={16} />
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {loading ? (
-                <div className="flex justify-center py-8">
-                  <Loader2 className="animate-spin text-muted" />
                 </div>
-              ) : goals.length === 0 ? (
-                <div className="text-center py-8">
-                  <div className="w-12 h-12 bg-muted/20 rounded-full flex items-center justify-center mx-auto mb-3">
-                    <Target size={24} className="text-muted" />
-                  </div>
-                  <p className="text-sm text-muted font-medium mb-3">No goals set yet</p>
-                  <Button 
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleOpenForm('goal')}
-                    className="gap-2"
-                  >
-                    <Plus size={14} />
-                    Add Your First Goal
-                  </Button>
+
+                <div className="lg:col-span-4 space-y-6">
+                    <Card className="border-none shadow-md">
+                        <CardHeader>
+                            <CardTitle>Financial Goals</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-8">
+                            {loading ? (
+                                <div className="flex justify-center py-8">
+                                    <Loader2 className="animate-spin text-muted" />
+                                </div>
+                            ) : goals.length === 0 ? (
+                                <div className="text-center py-8 text-muted">
+                                    <p className="text-sm">No goals created yet. Start by creating one!</p>
+                                </div>
+                            ) : (
+                                goals.map((goal) => {
+                                    const percentage = (goal.saved_amount / goal.target_amount) * 100;
+                                    return (
+                                        <div key={goal.id} className="space-y-4 group">
+                                            <div className="flex justify-between items-start">
+                                                <div className="flex-1">
+                                                    <p className="font-bold text-sm">{goal.name}</p>
+                                                    <p className="text-[10px] text-muted font-bold uppercase tracking-wider mt-1">Target: {goal.target_date}</p>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className={cn("text-lg font-black", goal.color)}>
+                                                        {percentage.toFixed(1)}%
+                                                    </span>
+                                                    <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                                                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleOpenGoalModal(goal)}>
+                                                            <Pencil size={12} />
+                                                        </Button>
+                                                        <Button variant="ghost" size="icon" className="h-6 w-6 text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => handleDeleteGoal(goal.id)}>
+                                                            <Trash2 size={12} />
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <Progress value={percentage} className="h-2" />
+                                            <div className="flex justify-between text-[10px] font-bold text-muted uppercase">
+                                                <span>Saved: ₹{goal.saved_amount.toLocaleString()}</span>
+                                                <span>₹{goal.target_amount.toLocaleString()}</span>
+                                            </div>
+                                        </div>
+                                    );
+                                })
+                            )}
+                            <Button variant="outline" className="w-full h-12 rounded-2xl border-dashed border-2 hover:bg-muted/5 transition-all font-bold" onClick={() => handleOpenGoalModal()}>
+                                <Plus size={16} className="mr-2" />
+                                Add New Goal
+                            </Button>
+                        </CardContent>
+                    </Card>
                 </div>
-              ) : (
-                <>
-                  {goals.map((goal) => (
-                    <GoalCard
-                      key={goal.id}
-                      goal={goal}
-                      onEdit={() => handleOpenForm('goal', goal)}
-                      onDelete={() => handleDelete(goal.id, 'goal')}
-                      onAddFunds={() => openAddFundsModal(goal)}
-                    />
-                  ))}
-                </>
-              )}
-            </CardContent>
-          </Card>
+            </div>
 
-          {/* Income Calculator */}
-          <IncomeCalculator onIncomeChange={setMonthlyIncome} />
+            {/* Budget Modal */}
+            <Modal
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                title={editingBudget ? "Edit Budget" : "Create New Budget"}
+            >
+                <div className="space-y-4">
+                    <div className="space-y-2">
+                        <label className="text-sm font-medium">Category Name</label>
+                        <Input
+                            placeholder="e.g., Food, Travel"
+                            value={formData.name}
+                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        />
+                        <p className="text-xs text-muted">This should match your transaction category.</p>
+                    </div>
+                    
+                    <div className="space-y-2">
+                        <label className="text-sm font-medium">Monthly Limit (₹)</label>
+                        <Input
+                            type="number"
+                            placeholder="e.g., 5000"
+                            value={formData.limit_amount}
+                            onChange={(e) => setFormData({ ...formData, limit_amount: e.target.value })}
+                            min="0"
+                        />
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="text-sm font-medium">Color Label</label>
+                        <div className="flex flex-wrap gap-2">
+                            {COLORS.map((c) => (
+                                <button
+                                    key={c.value}
+                                    type="button"
+                                    className={cn(
+                                        "w-8 h-8 rounded-full border-2 transition-all",
+                                        c.value,
+                                        formData.color === c.value ? "border-foreground scale-110" : "border-transparent opacity-70 hover:opacity-100"
+                                    )}
+                                    onClick={() => setFormData({ ...formData, color: c.value })}
+                                    title={c.label}
+                                />
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="pt-4 flex justify-end gap-2">
+                        <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}>
+                            Cancel
+                        </Button>
+                        <Button onClick={handleSave} disabled={saving}>
+                            {saving ? (
+                                <>
+                                    <Loader2 className="animate-spin mr-2 h-4 w-4" />
+                                    Saving...
+                                </>
+                            ) : (
+                                "Save Budget"
+                            )}
+                        </Button>
+                    </div>
+                </div>
+            </Modal>
+
+            {/* Goal Modal */}
+            <Modal
+                isOpen={isGoalModalOpen}
+                onClose={() => setIsGoalModalOpen(false)}
+                title={editingGoal ? "Edit Goal" : "Create New Goal"}
+            >
+                <div className="space-y-4">
+                    <div className="space-y-2">
+                        <label className="text-sm font-medium">Goal Name</label>
+                        <Input
+                            placeholder="e.g., Emergency Fund, Dream House"
+                            value={goalFormData.name}
+                            onChange={(e) => setGoalFormData({ ...goalFormData, name: e.target.value })}
+                        />
+                    </div>
+                    
+                    <div className="space-y-2">
+                        <label className="text-sm font-medium">Amount Saved (₹)</label>
+                        <Input
+                            type="number"
+                            placeholder="e.g., 50000"
+                            value={goalFormData.saved_amount}
+                            onChange={(e) => setGoalFormData({ ...goalFormData, saved_amount: e.target.value })}
+                            min="0"
+                        />
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="text-sm font-medium">Target Amount (₹)</label>
+                        <Input
+                            type="number"
+                            placeholder="e.g., 500000"
+                            value={goalFormData.target_amount}
+                            onChange={(e) => setGoalFormData({ ...goalFormData, target_amount: e.target.value })}
+                            min="0"
+                        />
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="text-sm font-medium">Target Date</label>
+                        <Input
+                            type="text"
+                            placeholder="e.g., Dec 2026"
+                            value={goalFormData.target_date}
+                            onChange={(e) => setGoalFormData({ ...goalFormData, target_date: e.target.value })}
+                        />
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="text-sm font-medium">Color Label</label>
+                        <div className="flex flex-wrap gap-2">
+                            {[
+                                { label: "Primary", value: "text-primary" },
+                                { label: "Secondary", value: "text-secondary" },
+                                { label: "Accent", value: "text-accent" },
+                                { label: "Emerald", value: "text-emerald-500" },
+                                { label: "Rose", value: "text-rose-500" },
+                                { label: "Violet", value: "text-violet-500" },
+                                { label: "Amber", value: "text-amber-500" },
+                            ].map((c) => (
+                                <button
+                                    key={c.value}
+                                    type="button"
+                                    className={cn(
+                                        "px-3 py-1.5 rounded-md border-2 text-xs font-bold transition-all",
+                                        c.value,
+                                        goalFormData.color === c.value ? "border-foreground bg-muted/30" : "border-transparent opacity-70 hover:opacity-100"
+                                    )}
+                                    onClick={() => setGoalFormData({ ...goalFormData, color: c.value })}
+                                >
+                                    {c.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="pt-4 flex justify-end gap-2">
+                        <Button type="button" variant="ghost" onClick={() => setIsGoalModalOpen(false)}>
+                            Cancel
+                        </Button>
+                        <Button onClick={handleSaveGoal} disabled={saving}>
+                            {saving ? (
+                                <>
+                                    <Loader2 className="animate-spin mr-2 h-4 w-4" />
+                                    Saving...
+                                </>
+                            ) : (
+                                "Save Goal"
+                            )}
+                        </Button>
+                    </div>
+                </div>
+            </Modal>
         </div>
-      </div>
-
-      {/* Modals */}
-      <BudgetGoalForm
-        isOpen={isFormOpen}
-        onClose={() => {
-          setIsFormOpen(false);
-          setEditingItem(null);
-        }}
-        type={formType}
-        item={editingItem}
-        onSave={handleSaveItem}
-      />
-
-      <StrategySelector
-        isOpen={strategyModalOpen}
-        onClose={() => setStrategyModalOpen(false)}
-        onSelectStrategy={handleSelectStrategy}
-        monthlyIncome={monthlyIncome}
-      />
-
-      <InsightsModal
-        isOpen={insightModalOpen}
-        onClose={() => setInsightModalOpen(false)}
-        insights={insights}
-      />
-
-      {/* Add Funds Modal */}
-      <Modal
-        isOpen={addFundsModalOpen}
-        onClose={() => {
-          setAddFundsModalOpen(false);
-          setSelectedGoal(null);
-          setFundsAmount("");
-        }}
-        title="Add Progress to Goal"
-      >
-        {selectedGoal && (
-          <div className="space-y-4">
-            <div className="p-4 bg-muted/20 rounded-xl">
-              <p className="text-sm font-bold mb-1">{selectedGoal.name}</p>
-              <p className="text-xs text-muted">
-                Current: ₹{selectedGoal.saved_amount.toLocaleString()} / ₹{selectedGoal.target_amount.toLocaleString()}
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-bold">Amount to Add (₹)</label>
-              <Input
-                type="number"
-                placeholder="Enter amount"
-                value={fundsAmount}
-                onChange={(e) => setFundsAmount(e.target.value)}
-                min="0"
-                step="0.01"
-              />
-            </div>
-
-            <div className="flex gap-2">
-              <Button 
-                className="flex-1 gap-2" 
-                onClick={handleAddFunds}
-                disabled={!fundsAmount || parseFloat(fundsAmount) <= 0}
-              >
-                <TrendingUp size={16} />
-                Add Funds
-              </Button>
-              <Button 
-                variant="outline"
-                onClick={() => {
-                  setAddFundsModalOpen(false);
-                  setSelectedGoal(null);
-                  setFundsAmount("");
-                }}
-              >
-                Cancel
-              </Button>
-            </div>
-          </div>
-        )}
-      </Modal>
-    </div>
-  );
+    );
 }

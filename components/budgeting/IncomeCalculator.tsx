@@ -43,7 +43,10 @@ export function IncomeCalculator({ onIncomeChange }: IncomeCalculatorProps) {
   const fetchIncomeSources = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user) {
+        setLoading(false);
+        return;
+      }
 
       const { data, error } = await supabase
         .from('income_sources')
@@ -51,10 +54,16 @@ export function IncomeCalculator({ onIncomeChange }: IncomeCalculatorProps) {
         .eq('user_id', user.id)
         .order('created_at', { ascending: true });
 
-      if (error) throw error;
-      setIncomeSources(data || []);
+      if (error) {
+        console.error("Error fetching income sources:", error);
+        // If table doesn't exist, set empty array instead of throwing
+        setIncomeSources([]);
+      } else {
+        setIncomeSources(data || []);
+      }
     } catch (error) {
       console.error("Error fetching income sources:", error);
+      setIncomeSources([]);
     } finally {
       setLoading(false);
     }
