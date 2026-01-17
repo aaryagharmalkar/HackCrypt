@@ -408,7 +408,6 @@ export default function BudgetingPage() {
                                                     <li>Budget name: "Travel" → Counts transactions with category "Travel"</li>
                                                     <li>Budget name: "Food" → Counts transactions with category "Food"</li>
                                                 </ul>
-                                                <p className="mt-2 text-blue-700 font-semibold">💡 Tip: Check the browser console (F12) to see which transactions are being matched to each budget.</p>
                                             </div>
                                         </div>
                                     </div>

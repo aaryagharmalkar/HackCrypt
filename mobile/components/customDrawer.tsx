@@ -14,7 +14,7 @@ export default function CustomDrawer(props: any) {
         <View style={styles.logo}>
           <Ionicons name="shield-checkmark-outline" size={26} color="#fff" />
         </View>
-        <Text style={styles.appName}>Proof of Luck</Text>
+        <Text style={styles.appName}>Finora</Text>
         <Text style={styles.tagline}>Financial Wellness</Text>
       </View>
 

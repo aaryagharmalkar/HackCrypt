@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -37,6 +37,37 @@ export function Sidebar() {
     const pathname = usePathname();
     const router = useRouter();
     const [isOpen, setIsOpen] = React.useState(false);
+    const [userName, setUserName] = useState<string>("");
+    const [userEmail, setUserEmail] = useState<string>("");
+    const [userInitials, setUserInitials] = useState<string>("U");
+
+    useEffect(() => {
+        const fetchUserData = async () => {
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                
+                if (user) {
+                    // Get full name from user metadata
+                    const fullName = user.user_metadata?.full_name || user.email?.split('@')[0] || "User";
+                    const email = user.email || "";
+                    
+                    // Generate initials
+                    const nameParts = fullName.split(' ');
+                    const initials = nameParts.length > 1 
+                        ? `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`.toUpperCase()
+                        : fullName.substring(0, 2).toUpperCase();
+                    
+                    setUserName(fullName);
+                    setUserEmail(email);
+                    setUserInitials(initials);
+                }
+            } catch (error) {
+                console.error("Error fetching user data:", error);
+            }
+        };
+
+        fetchUserData();
+    }, []);
 
     const handleLogout = async () => {
         await supabase.auth.signOut();
@@ -75,7 +106,7 @@ export function Sidebar() {
                             <ShieldCheck className="text-white" />
                         </div>
                         <div>
-                            <h1 className="text-xl font-bold tracking-tight">Proof of Luck</h1>
+                            <h1 className="text-xl font-bold tracking-tight">Finora</h1>
                             <p className="text-[10px] text-muted font-medium uppercase tracking-widest">Financial Wellness</p>
                         </div>
                     </div>
@@ -127,11 +158,11 @@ export function Sidebar() {
                     </div>
 
                     <div className="mt-6 flex items-center gap-3 px-2 py-4 border-t border-border">
-                        <div className="w-10 h-10 rounded-full bg-slate-200 border-2 border-white dark:border-slate-800 flex items-center justify-center font-bold text-slate-700">
-                            KK
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 border-2 border-white dark:border-slate-800 flex items-center justify-center font-bold text-white shadow-sm">
+                            {userInitials}
                         </div>
                         <div className="flex-1 min-w-0">
-                            <p className="text-sm font-bold truncate">Kaustubh K.</p>
+                            <p className="text-sm font-bold truncate">{userName || "Loading..."}</p>
                             <p className="text-[10px] text-muted font-medium truncate">PRO MEMBER</p>
                         </div>
                     </div>

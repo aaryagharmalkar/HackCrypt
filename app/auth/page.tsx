@@ -82,7 +82,7 @@ export default function AuthPage() {
           <div className="w-16 h-16 rounded-2xl bg-secondary flex items-center justify-center mb-4 shadow-lg">
             <ShieldCheck className="text-white w-8 h-8" />
           </div>
-          <h1 className="text-3xl font-black text-foreground tracking-tight">Proof of Luck</h1>
+          <h1 className="text-3xl font-black text-foreground tracking-tight">Finora</h1>
           <p className="text-muted text-xs font-bold uppercase tracking-[0.2em] mt-2 flex items-center gap-2">
             <Sparkles className="w-3 h-3" />
             Financial Wellness Platform
