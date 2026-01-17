@@ -5,230 +5,173 @@ import {
   StyleSheet,
   ScrollView,
   ActivityIndicator,
-  TouchableOpacity,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../lib/supabase";
+import CreditGauge from "@/components/CreditGauge";
+import CreditRoadmap from "@/components/CreditRoadmap";
 
-type CibilData = {
-  cibil_score: number;
-  description: string;
-  type: string;
-};
-
-export default function CreditScoreScreen() {
-  const [data, setData] = useState<CibilData | null>(null);
+export default function CreditScreen() {
   const [loading, setLoading] = useState(true);
+  const [score, setScore] = useState(0);
+  const [description, setDescription] = useState("");
+  const [tier, setTier] = useState("Good");
 
   useEffect(() => {
     fetchCibil();
   }, []);
 
   const fetchCibil = async () => {
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
 
-      if (!user) return;
+    const { data } = await supabase
+      .from("cibil_recommendations")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
 
-      const { data, error } = await supabase
-        .from("cibil_recommendations")
-        .select("cibil_score, description, type")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .single();
-
-      if (data) setData(data);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
+    if (data) {
+      setScore(data.cibil_score);
+      setDescription(
+        data.description.replace(/^#+\s/gm, "").replace(/\*/g, "")
+      );
+      setTier(getTier(data.cibil_score));
     }
+    setLoading(false);
+  };
+
+  const getTier = (s: number) => {
+    if (s >= 800) return "Elite";
+    if (s >= 700) return "Excellent";
+    if (s >= 600) return "Good";
+    if (s >= 500) return "Fair";
+    return "Poor";
   };
 
   if (loading) {
     return (
-      <View style={styles.loader}>
+      <View style={styles.center}>
         <ActivityIndicator size="large" />
       </View>
     );
   }
 
-  const score = data?.cibil_score ?? 0;
-  const status =
-    score >= 750 ? "EXCELLENT" : score >= 650 ? "GOOD" : "NEEDS WORK";
-
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>Credit Analysis</Text>
-        <Text style={styles.subtitle}>
-          Understand your financial trustworthiness
-        </Text>
+    <ScrollView style={styles.container}>
+      <Text style={styles.title}>Credit Analysis</Text>
+      <Text style={styles.subtitle}>
+        Understanding your financial trustworthiness
+      </Text>
+
+      {/* Gauge */}
+      <View style={styles.card}>
+        <CreditGauge score={score} />
+        <Text style={styles.tier}>{tier}</Text>
       </View>
 
-      {/* Score Card */}
-      <View style={styles.scoreCard}>
-        <Ionicons name="shield-checkmark-outline" size={48} color="#059669" />
-        <Text style={styles.score}>{score}</Text>
-        <Text style={styles.badge}>{status}</Text>
-      </View>
-
-      {/* Metrics */}
-      <View style={styles.metrics}>
-        <Metric label="Payment History" value="Excellent" />
-        <Metric label="Credit Usage" value="15%" />
-        <Metric label="Age of Credit" value="5.2 yrs" />
-        <Metric label="Inquiries" value="High (4)" />
+      {/* Stats */}
+      <View style={styles.statsRow}>
+        <Stat label="Payment History" value="Excellent" />
+        <Stat label="Credit Usage" value="15%" />
+        <Stat label="Credit Age" value="5.2 yrs" />
+        <Stat label="Inquiries" value="High (4)" warn />
       </View>
 
       {/* Analysis */}
-      <Card title="Personalized Analysis">
-        <Text style={styles.description}>
-          {cleanText(data?.description)}
-        </Text>
-      </Card>
+      <View style={styles.card}>
+        <Text style={styles.section}>Personalized Analysis</Text>
+        <Text style={styles.body}>{description}</Text>
+      </View>
 
-      {/* Insights */}
-      <Card title="Insights">
-        <Insight
+      {/* Factors */}
+      <View style={styles.row}>
+        <InfoCard
           icon="checkmark-circle-outline"
           title="Positive Factors"
-          text="Consistent payments and low utilization are helping your score."
+          text="Consistent payment history and low utilization."
         />
-        <Insight
+        <InfoCard
           icon="trending-up-outline"
           title="Growth Potential"
-          text="Reduce inquiries and maintain credit age to boost further."
+          text="Longer credit history and consolidation help."
         />
-      </Card>
+      </View>
 
-      {/* CTA */}
-      <View style={styles.cta}>
-        <Text style={styles.ctaTitle}>Want to reach 850+?</Text>
-        <Text style={styles.ctaText}>
-          Get a personalized roadmap to optimize your credit profile.
-        </Text>
-        <TouchableOpacity style={styles.ctaBtn}>
-          <Text style={styles.ctaBtnText}>Get My Roadmap</Text>
-        </TouchableOpacity>
+      {/* Roadmap */}
+      <View style={styles.card}>
+        <Text style={styles.section}>Credit Roadmap</Text>
+        <CreditRoadmap cibilScore={score} />
       </View>
     </ScrollView>
   );
 }
 
-/* ---------------- COMPONENTS ---------------- */
-
-function Metric({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, warn }: any) {
   return (
-    <View style={styles.metric}>
-      <Text style={styles.metricLabel}>{label}</Text>
-      <Text style={styles.metricValue}>{value}</Text>
+    <View style={styles.stat}>
+      <Text style={styles.statLabel}>{label}</Text>
+      <Text style={[styles.statValue, warn && { color: "#F97316" }]}>
+        {value}
+      </Text>
     </View>
   );
 }
 
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
+function InfoCard({ icon, title, text }: any) {
   return (
-    <View style={styles.card}>
-      <Text style={styles.cardTitle}>{title}</Text>
-      {children}
+    <View style={styles.info}>
+      <Ionicons name={icon} size={22} color="#059669" />
+      <Text style={styles.infoTitle}>{title}</Text>
+      <Text style={styles.infoText}>{text}</Text>
     </View>
   );
 }
-
-function Insight({
-  icon,
-  title,
-  text,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  title: string;
-  text: string;
-}) {
-  return (
-    <View style={styles.insight}>
-      <Ionicons name={icon} size={24} color="#059669" />
-      <View>
-        <Text style={styles.insightTitle}>{title}</Text>
-        <Text style={styles.insightText}>{text}</Text>
-      </View>
-    </View>
-  );
-}
-
-/* ---------------- HELPERS ---------------- */
-
-function cleanText(text?: string) {
-  if (!text) return "";
-  return text.replace(/^#+\s/gm, "").replace(/\*/g, "");
-}
-
-/* ---------------- STYLES ---------------- */
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, backgroundColor: "#fff" },
-  loader: { flex: 1, justifyContent: "center", alignItems: "center" },
+  container: { flex: 1, backgroundColor: "#F9FAFB", padding: 20 },
+  center: { flex: 1, justifyContent: "center", alignItems: "center" },
 
-  header: { marginBottom: 24 },
-  title: { fontSize: 26, fontWeight: "700" },
-  subtitle: { color: "#6B7280", marginTop: 4 },
-
-  scoreCard: {
-    backgroundColor: "#F9FAFB",
-    padding: 24,
-    borderRadius: 20,
-    alignItems: "center",
-    marginBottom: 20,
-  },
-  score: { fontSize: 48, fontWeight: "800", marginVertical: 6 },
-  badge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: "#E0E7FF",
-    fontWeight: "700",
-  },
-
-  metrics: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-    marginBottom: 20,
-  },
-  metric: { width: "48%", marginBottom: 12 },
-  metricLabel: { fontSize: 12, color: "#6B7280" },
-  metricValue: { fontWeight: "700" },
+  title: { fontSize: 26, fontWeight: "800" },
+  subtitle: { color: "#6B7280", marginBottom: 20 },
 
   card: {
-    backgroundColor: "#F9FAFB",
-    padding: 16,
-    borderRadius: 16,
-    marginBottom: 20,
-  },
-  cardTitle: { fontSize: 16, fontWeight: "700", marginBottom: 10 },
-  description: { color: "#374151", lineHeight: 20 },
-
-  insight: { flexDirection: "row", gap: 12, marginBottom: 12 },
-  insightTitle: { fontWeight: "700" },
-  insightText: { color: "#6B7280", fontSize: 12 },
-
-  cta: {
-    backgroundColor: "#059669",
-    padding: 24,
-    borderRadius: 20,
-    marginBottom: 40,
-  },
-  ctaTitle: { color: "#fff", fontSize: 20, fontWeight: "700" },
-  ctaText: { color: "#E0E7FF", marginVertical: 8 },
-  ctaBtn: {
     backgroundColor: "#fff",
-    paddingVertical: 12,
-    borderRadius: 14,
-    marginTop: 10,
+    padding: 18,
+    borderRadius: 18,
+    marginBottom: 16,
   },
-  ctaBtnText: { textAlign: "center", fontWeight: "700", color: "#059669" },
+
+  tier: {
+    textAlign: "center",
+    marginTop: 8,
+    fontWeight: "800",
+    color: "#059669",
+  },
+
+  statsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 16,
+  },
+
+  stat: { flex: 1, alignItems: "center" },
+  statLabel: { fontSize: 11, color: "#6B7280" },
+  statValue: { fontWeight: "800", marginTop: 4 },
+
+  section: { fontSize: 16, fontWeight: "700", marginBottom: 8 },
+  body: { fontSize: 14, color: "#374151" },
+
+  row: { flexDirection: "row", gap: 10 },
+
+  info: {
+    flex: 1,
+    backgroundColor: "#ECFDF5",
+    padding: 14,
+    borderRadius: 14,
+  },
+  infoTitle: { fontWeight: "700", marginTop: 6 },
+  infoText: { fontSize: 12, color: "#374151", marginTop: 4 },
 });

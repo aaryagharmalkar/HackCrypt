@@ -5,43 +5,73 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Modal,
-  TextInput,
-  ActivityIndicator,
   Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { supabase } from "../../lib/supabase";
+import { supabase } from "@/lib/supabase";
 
-type Budget = {
+import { BudgetCard } from "@/components/BudgetCard";
+import { GoalCard } from "@/components/GoalCard";
+import { BudgetGoalForm } from "@/components/BudgetGoalForm";
+import { IncomeCalculator } from "@/components/IncomeCalculator";
+import { StrategySelector } from "@/components/StratergySelector";
+import { InsightsModal } from "@/components/InsightsModal";
+
+/* ================= Types ================= */
+
+interface BudgetWithSpent {
   id: string;
   name: string;
   limit_amount: number;
-  spent?: number;
+  spent: number;
   color: string;
-};
+}
 
-const GOALS = [
-  { name: "Emergency Fund", saved: 150000, target: 500000 },
-  { name: "Dream House", saved: 650000, target: 10000000 },
-  { name: "New Car", saved: 250000, target: 1500000 },
-];
+interface Goal {
+  id: string;
+  name: string;
+  target_amount: number;
+  saved_amount: number;
+  target_date: string;
+  color: string;
+}
+
+interface InsightData {
+  topCategory: string;
+  topAmount: number;
+  totalDiff: number;
+  biggestSpike: string;
+  savingPotential: number;
+  overspending?: {
+    category: string;
+    percentHigher: number;
+  };
+}
+
+/* ================= Screen ================= */
 
 export default function BudgetingScreen() {
-  const [budgets, setBudgets] = useState<Budget[]>([]);
+  const [budgets, setBudgets] = useState<BudgetWithSpent[]>([]);
+  const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editing, setEditing] = useState<Budget | null>(null);
+  const [monthlyIncome, setMonthlyIncome] = useState(0);
 
-  const [name, setName] = useState("");
-  const [limit, setLimit] = useState("");
+  const [formOpen, setFormOpen] = useState(false);
+  const [formType, setFormType] = useState<"budget" | "goal">("budget");
+  const [editingItem, setEditingItem] = useState<any>(null);
+
+  const [strategyOpen, setStrategyOpen] = useState(false);
+  const [insightsOpen, setInsightsOpen] = useState(false);
+
+  const [insights, setInsights] = useState<InsightData | null>(null);
+
+  /* ================= Fetch ================= */
 
   useEffect(() => {
-    fetchBudgets();
+    fetchData();
   }, []);
 
-  const fetchBudgets = async () => {
-    setLoading(true);
+  const fetchData = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -51,26 +81,42 @@ export default function BudgetingScreen() {
         .select("*")
         .eq("user_id", user.id);
 
-      const { data: tx } = await supabase
+      const { data: goalsData } = await supabase
+        .from("goals")
+        .select("*")
+        .eq("user_id", user.id);
+
+      const ninetyDaysAgo = new Date();
+      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+
+      const { data: transactions } = await supabase
         .from("transactions")
-        .select("amount, category")
+        .select("amount, category, date")
         .eq("user_id", user.id)
-        .eq("type", "debit");
+        .gte("date", ninetyDaysAgo.toISOString());
 
-      const enriched =
-        budgetsData?.map((b: any) => {
-          const spent =
-            tx
-              ?.filter(
-                (t: any) =>
-                  t.category?.toLowerCase() === b.name.toLowerCase()
-              )
-              .reduce((a: number, c: any) => a + Math.abs(c.amount), 0) || 0;
+      const currentMonth = new Date().getMonth();
+      const currentYear = new Date().getFullYear();
 
-          return { ...b, spent };
-        }) || [];
+      const processedBudgets = (budgetsData || []).map((b: any) => {
+        const spent =
+          transactions
+            ?.filter((t: any) => {
+              const d = new Date(t.date);
+              return (
+                d.getMonth() === currentMonth &&
+                d.getFullYear() === currentYear &&
+                t.category?.toLowerCase().includes(b.name.toLowerCase())
+              );
+            })
+            .reduce((a: number, c: any) => a + Math.abs(c.amount), 0) || 0;
 
-      setBudgets(enriched);
+        return { ...b, spent };
+      });
+
+      setBudgets(processedBudgets);
+      setGoals(goalsData || []);
+      processInsights(transactions || []);
     } catch (e) {
       console.error(e);
     } finally {
@@ -78,235 +124,209 @@ export default function BudgetingScreen() {
     }
   };
 
-  const saveBudget = async () => {
-    if (!name || !limit) return;
+  /* ================= Insights ================= */
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+  const processInsights = (tx: any[]) => {
+    const catTotals: Record<string, number> = {};
+    tx.forEach((t) => {
+      const c = t.category || "Other";
+      catTotals[c] = (catTotals[c] || 0) + Math.abs(t.amount);
+    });
 
-    const payload = {
-      name,
-      limit_amount: Number(limit),
-      user_id: user.id,
-      color: "#059669",
-    };
+    const top = Object.entries(catTotals).sort((a, b) => b[1] - a[1])[0];
 
-    if (editing) {
-      await supabase.from("budgets").update(payload).eq("id", editing.id);
-    } else {
-      await supabase.from("budgets").insert(payload);
-    }
-
-    setModalOpen(false);
-    setEditing(null);
-    setName("");
-    setLimit("");
-    fetchBudgets();
+    setInsights({
+      topCategory: top?.[0] || "None",
+      topAmount: top?.[1] || 0,
+      totalDiff: 0,
+      biggestSpike: top?.[0] || "None",
+      savingPotential: Math.round((top?.[1] || 0) * 0.1),
+    });
   };
 
-  const deleteBudget = (id: string) => {
-    Alert.alert("Delete Budget?", "This action cannot be undone.", [
-      { text: "Cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          await supabase.from("budgets").delete().eq("id", id);
-          fetchBudgets();
+  /* ================= Actions ================= */
+
+  const openForm = (type: "budget" | "goal", item?: any) => {
+    setFormType(type);
+    setEditingItem(item || null);
+    setFormOpen(true);
+  };
+
+  const deleteItem = async (id: string, type: "budget" | "goal") => {
+    Alert.alert(
+      "Confirm Delete",
+      `Delete this ${type}?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            await supabase.from(type === "budget" ? "budgets" : "goals").delete().eq("id", id);
+            fetchData();
+          },
         },
-      },
-    ]);
+      ]
+    );
   };
+
+  /* ================= Render ================= */
 
   return (
     <ScrollView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>Budgets & Goals</Text>
-        <TouchableOpacity
-          style={styles.addBtn}
-          onPress={() => setModalOpen(true)}
-        >
-          <Ionicons name="add" size={20} color="#fff" />
-          <Text style={styles.addText}>New Budget</Text>
-        </TouchableOpacity>
+        <Text style={styles.subtitle}>
+          Plan your financial future
+        </Text>
+
+        <View style={styles.headerActions}>
+          <ActionButton icon="bulb-outline" label="Insights" onPress={() => setInsightsOpen(true)} />
+          <ActionButton icon="flash-outline" label="Strategies" onPress={() => setStrategyOpen(true)} />
+          <ActionButton icon="add" label="New Budget" primary onPress={() => openForm("budget")} />
+        </View>
       </View>
 
       {/* Budgets */}
-      {loading ? (
-        <ActivityIndicator size="large" />
-      ) : (
-        budgets.map((b) => {
-          const pct = Math.min(
-            ((b.spent || 0) / b.limit_amount) * 100,
-            100
-          );
-          return (
-            <View key={b.id} style={styles.card}>
-              <View style={styles.row}>
-                <Text style={styles.cardTitle}>{b.name}</Text>
-                <View style={styles.row}>
-                  <TouchableOpacity
-                    onPress={() => {
-                      setEditing(b);
-                      setName(b.name);
-                      setLimit(String(b.limit_amount));
-                      setModalOpen(true);
-                    }}
-                  >
-                    <Ionicons name="pencil" size={16} />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => deleteBudget(b.id)}>
-                    <Ionicons
-                      name="trash"
-                      size={16}
-                      color="#EF4444"
-                    />
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              <Text style={styles.amount}>
-                ₹{b.spent} / ₹{b.limit_amount}
-              </Text>
-
-              <View style={styles.progressBg}>
-                <View
-                  style={[
-                    styles.progress,
-                    { width: `${pct}%` },
-                  ]}
-                />
-              </View>
-            </View>
-          );
-        })
-      )}
+      <Section title="Monthly Budgets">
+        {loading ? (
+          <Text style={styles.muted}>Loading…</Text>
+        ) : budgets.length === 0 ? (
+          <Text style={styles.muted}>No budgets yet</Text>
+        ) : (
+          budgets.map((b) => (
+            <BudgetCard
+              key={b.id}
+              budget={b}
+              onEdit={() => openForm("budget", b)}
+              onDelete={() => deleteItem(b.id, "budget")}
+            />
+          ))
+        )}
+      </Section>
 
       {/* Goals */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Financial Goals</Text>
-        {GOALS.map((g) => {
-          const pct = (g.saved / g.target) * 100;
-          return (
-            <View key={g.name} style={{ marginTop: 12 }}>
-              <View style={styles.row}>
-                <Text>{g.name}</Text>
-                <Text>{pct.toFixed(1)}%</Text>
-              </View>
-              <View style={styles.progressBg}>
-                <View
-                  style={[
-                    styles.progress,
-                    { width: `${pct}%` },
-                  ]}
-                />
-              </View>
-            </View>
-          );
-        })}
-      </View>
-
-      {/* Modal */}
-      <Modal visible={modalOpen} animationType="slide">
-        <View style={styles.modal}>
-          <Text style={styles.modalTitle}>
-            {editing ? "Edit Budget" : "New Budget"}
-          </Text>
-
-          <TextInput
-            placeholder="Category name"
-            style={styles.input}
-            value={name}
-            onChangeText={setName}
+      <Section title="Goals">
+        {goals.map((g) => (
+          <GoalCard
+            key={g.id}
+            goal={g}
+            onEdit={() => openForm("goal", g)}
+            onDelete={() => deleteItem(g.id, "goal")}
           />
+        ))}
+      </Section>
 
-          <TextInput
-            placeholder="Monthly limit"
-            style={styles.input}
-            keyboardType="numeric"
-            value={limit}
-            onChangeText={setLimit}
-          />
+      {/* Income */}
+      <IncomeCalculator onIncomeChange={setMonthlyIncome} />
 
-          <TouchableOpacity style={styles.saveBtn} onPress={saveBudget}>
-            <Text style={styles.saveText}>Save</Text>
-          </TouchableOpacity>
+      {/* Modals */}
+      <BudgetGoalForm
+        isOpen={formOpen}
+        type={formType}
+        item={editingItem}
+        onClose={() => setFormOpen(false)}
+        onSave={fetchData}
+      />
 
-          <TouchableOpacity onPress={() => setModalOpen(false)}>
-            <Text style={styles.cancel}>Cancel</Text>
-          </TouchableOpacity>
-        </View>
-      </Modal>
+      <StrategySelector
+        isOpen={strategyOpen}
+        onClose={() => setStrategyOpen(false)}
+        onSelectStrategy={() => {
+          setStrategyOpen(false);
+          setFormOpen(true);
+        }}
+        monthlyIncome={monthlyIncome}
+      />
+
+      <InsightsModal
+        isOpen={insightsOpen}
+        onClose={() => setInsightsOpen(false)}
+        insights={insights}
+      />
     </ScrollView>
   );
 }
 
-/* ---------------- STYLES ---------------- */
+/* ================= Helpers ================= */
+
+function Section({ title, children }: any) {
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      {children}
+    </View>
+  );
+}
+
+function ActionButton({ icon, label, onPress, primary }: any) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      style={[
+        styles.actionBtn,
+        primary && styles.primaryBtn,
+      ]}
+    >
+      <Ionicons name={icon} size={16} color={primary ? "#fff" : "#064E3B"} />
+      <Text style={[styles.actionText, primary && { color: "#fff" }]}>
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+/* ================= Styles ================= */
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, backgroundColor: "#fff" },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 20,
-  },
-  title: { fontSize: 26, fontWeight: "700" },
-  addBtn: {
-    flexDirection: "row",
-    backgroundColor: "#059669",
-    padding: 10,
-    borderRadius: 12,
-    gap: 6,
-  },
-  addText: { color: "#fff", fontWeight: "600" },
-
-  card: {
+  container: {
     backgroundColor: "#F9FAFB",
     padding: 16,
-    borderRadius: 16,
+  },
+  header: {
     marginBottom: 16,
   },
-  cardTitle: { fontWeight: "700", fontSize: 16 },
-  row: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 10,
+  title: {
+    fontSize: 24,
+    fontWeight: "800",
+    color: "#064E3B",
   },
-  amount: { marginTop: 6, color: "#6B7280" },
-
-  progressBg: {
-    height: 8,
-    backgroundColor: "#E5E7EB",
-    borderRadius: 6,
-    marginTop: 8,
-  },
-  progress: {
-    height: "100%",
-    backgroundColor: "#059669",
-    borderRadius: 6,
-  },
-
-  modal: { flex: 1, padding: 20, justifyContent: "center" },
-  modalTitle: { fontSize: 22, fontWeight: "700", marginBottom: 20 },
-  input: {
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 12,
-    padding: 12,
+  subtitle: {
+    color: "#6B7280",
     marginBottom: 12,
   },
-  saveBtn: {
-    backgroundColor: "#059669",
-    padding: 14,
-    borderRadius: 12,
-    marginTop: 10,
+  headerActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
   },
-  saveText: { color: "#fff", textAlign: "center", fontWeight: "700" },
-  cancel: {
-    textAlign: "center",
-    marginTop: 12,
-    color: "#6B7280",
+  actionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: "#ECFDF5",
+  },
+  primaryBtn: {
+    backgroundColor: "#059669",
+  },
+  actionText: {
+    fontWeight: "700",
+    color: "#064E3B",
+  },
+  section: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    marginBottom: 8,
+    color: "#064E3B",
+  },
+  muted: {
+    color: "#9CA3AF",
   },
 });

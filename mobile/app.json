@@ -2,7 +2,7 @@
   "expo": {
     "name": "mobile",
     "slug": "mobile",
-    "extra":{
+    "extra": {
       "supabaseuUrl": "https://pdwmvcurtvxskdgfakhg.supabase.co",
       "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBkd212Y3VydHZ4c2tkZ2Zha2hnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg0OTM2MDAsImV4cCI6MjA4NDA2OTYwMH0.Wu_hW5swXjePfs6M79p19Q6_0q1k8gUIkB6CZWQ63M4"
     },
@@ -42,7 +42,8 @@
             "backgroundColor": "#000000"
           }
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true,
