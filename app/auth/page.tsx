@@ -99,10 +99,10 @@ export default function AuthPage() {
               transition={{ duration: 0.3 }}
             >
               <CardHeader className="space-y-2 pb-6">
-                <CardTitle className="text-2xl font-bold">
+                <CardTitle className="text-2xl font-bold text-slate-900">
                   {isLogin ? 'Welcome back' : 'Create your account'}
                 </CardTitle>
-                <CardDescription>
+                <CardDescription className="text-slate-600">
                   {isLogin
                     ? 'Enter your credentials to access your financial dashboard.'
                     : 'Join thousands managing their finances smarter.'}
@@ -114,52 +114,52 @@ export default function AuthPage() {
                   <div className="space-y-4">
                     {!isLogin && (
                       <div className="space-y-2">
-                        <label className="text-xs font-bold text-muted uppercase tracking-wider ml-1">
+                        <label className="text-xs font-bold text-slate-700 uppercase tracking-wider ml-1">
                           Full Name
                         </label>
                         <div className="relative">
-                          <User className="absolute left-4 top-1/2 -translate-y-1/2 text-muted w-4 h-4" />
+                          <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
                           <Input
                             placeholder="John Doe"
                             value={fullName}
                             onChange={(e) => setFullName(e.target.value)}
                             required={!isLogin}
-                            className="pl-11"
+                            className="pl-11 text-slate-900"
                           />
                         </div>
                       </div>
                     )}
 
                     <div className="space-y-2">
-                      <label className="text-xs font-bold text-muted uppercase tracking-wider ml-1">
+                      <label className="text-xs font-bold text-slate-700 uppercase tracking-wider ml-1">
                         Email Address
                       </label>
                       <div className="relative">
-                        <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-muted w-4 h-4" />
+                        <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
                         <Input
                           type="email"
                           placeholder="name@example.com"
                           value={email}
                           onChange={(e) => setEmail(e.target.value)}
                           required
-                          className="pl-11"
+                          className="pl-11 text-slate-900"
                         />
                       </div>
                     </div>
 
                     <div className="space-y-2">
                       <div className="flex justify-between items-center ml-1">
-                        <label className="text-xs font-bold text-muted uppercase tracking-wider">
+                        <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
                           Password
                         </label>
                         {isLogin && (
-                          <button type="button" className="text-[10px] font-bold text-secondary hover:underline uppercase tracking-wider">
+                          <button type="button" className="text-[10px] font-bold text-emerald-600 hover:underline uppercase tracking-wider">
                             Forgot?
                           </button>
                         )}
                       </div>
                       <div className="relative">
-                        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-muted w-4 h-4" />
+                        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
                         <Input
                           type="password"
                           placeholder="••••••••"
@@ -167,7 +167,7 @@ export default function AuthPage() {
                           onChange={(e) => setPassword(e.target.value)}
                           required
                           minLength={6}
-                          className="pl-11"
+                          className="pl-11 text-slate-900"
                         />
                       </div>
                     </div>
@@ -178,9 +178,9 @@ export default function AuthPage() {
                       <input
                         type="checkbox"
                         id="remember"
-                        className="w-4 h-4 rounded border-border text-secondary focus:ring-secondary/20"
+                        className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500/20"
                       />
-                      <label htmlFor="remember" className="text-xs font-medium text-muted cursor-pointer">
+                      <label htmlFor="remember" className="text-xs font-medium text-slate-600 cursor-pointer">
                         Remember this device for 30 days
                       </label>
                     </div>
@@ -224,14 +224,14 @@ export default function AuthPage() {
                     )}
                   </Button>
 
-                  <div className="text-center pt-4 border-t border-border">
+                  <div className="text-center pt-4 border-t border-slate-200">
                     <button
                       type="button"
                       onClick={() => {
                         setIsLogin(!isLogin)
                         setError(null)
                       }}
-                      className="text-xs text-muted hover:text-foreground transition-colors font-bold uppercase tracking-wider"
+                      className="text-xs text-slate-600 hover:text-slate-900 transition-colors font-bold uppercase tracking-wider"
                     >
                       {isLogin
                         ? "New here? Create an account"
@@ -245,11 +245,11 @@ export default function AuthPage() {
         </Card>
 
         {/* Footer */}
-        <p className="text-center text-[10px] font-medium text-muted mt-6 leading-relaxed">
+        <p className="text-center text-[10px] font-medium text-slate-500 mt-6 leading-relaxed">
           By continuing, you agree to our{' '}
-          <span className="text-foreground font-bold cursor-pointer hover:underline">Terms</span>
+          <span className="text-slate-900 font-bold cursor-pointer hover:underline">Terms</span>
           {' '}and{' '}
-          <span className="text-foreground font-bold cursor-pointer hover:underline">Privacy Policy</span>
+          <span className="text-slate-900 font-bold cursor-pointer hover:underline">Privacy Policy</span>
         </p>
       </motion.div>
     </div>

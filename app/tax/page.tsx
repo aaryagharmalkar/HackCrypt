@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
     FileText,
     Download,
@@ -10,14 +10,98 @@ import {
     ArrowRight,
     Calculator,
     ShieldCheck,
-    Plus
+    Plus,
+    Loader2
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/lib/supabase";
+import { TaxChatbot } from "@/components/TaxChatbot";
+
+interface TaxReport {
+    id: string;
+    financial_year: string;
+    total_income: number;
+    better_regime: string;
+    investment_total: number;
+    deduction_total: number;
+    compliance_score: number;
+    missing_documents: string[] | null;
+    taxable_amount: number;
+    calculated_at: string;
+    updated_at: string;
+    remaining_detections: {
+        name: string;
+        current: number;
+        limit: number;
+        status: string; // e.g., 'full', 'partial', 'none'
+        action: string;
+    }[];
+}
 
 export default function TaxPage() {
+    const [report, setReport] = useState<TaxReport | null>(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchTaxReport = async () => {
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) return;
+
+                const { data, error } = await supabase
+                    .from('tax_reports')
+                    .select('*')
+                    .eq('user_id', user.id)
+                    .order('updated_at', { ascending: false })
+                    .limit(1)
+                    .single();
+
+                if (error) {
+                    // console.error("Error fetching tax report", error);
+                } else if (data) {
+                    setReport(data);
+                }
+            } catch (error) {
+                console.error("Failed to fetch tax data:", error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchTaxReport();
+    }, []);
+
+    // Estimated Tax Calculation (Simplified for UI demo)
+    // Old Regime Slab (approximate)
+    const calculateTax = (taxable: number) => {
+        const val = Number(taxable);
+        if (val <= 250000) return 0;
+        let tax = 0;
+        if (val > 1000000) {
+            tax += (val - 1000000) * 0.3;
+            tax += 112500; // Tax for 10L
+        } else if (val > 500000) {
+            tax += (val - 500000) * 0.2;
+            tax += 12500; // Tax for 5L
+        } else {
+            tax += (val - 250000) * 0.05;
+        }
+        return tax;
+    };
+
+    const estimatedTax = report ? calculateTax(report.taxable_amount) : 0;
+
+    if (loading) {
+        return (
+            <div className="flex h-[50vh] items-center justify-center">
+                <Loader2 className="animate-spin text-primary" size={32} />
+            </div>
+        );
+    }
+
     return (
         <div className="space-y-10">
             <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -39,116 +123,112 @@ export default function TaxPage() {
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
                 {/* Main Content */}
-                <div className="lg:col-span-8 space-y-8">
+                <div className="lg:col-span-7 space-y-8">
                     {/* Summary Card */}
-                    <Card className="border-none shadow-md overflow-hidden bg-slate-100 dark:bg-slate-900">
+                    <Card className="border-none shadow-md overflow-hidden bg-slate-950 text-white">
                         <CardContent className="p-8">
                             <div className="flex flex-col md:flex-row items-center justify-between gap-8">
-                                <div>
-                                    <h3 className="text-sm font-bold text-muted uppercase tracking-widest mb-2">Estimated Tax (FY 2025-26)</h3>
+                                <div className="flex-1">
+                                    <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-2">Estimated Tax ({report?.financial_year || 'FY 2025-26'})</h3>
                                     <div className="flex items-baseline gap-2">
-                                        <span className="text-4xl font-black">₹48,500</span>
-                                        <span className="text-sm font-bold text-secondary">Payable</span>
+                                        <span className="text-4xl font-black text-white">
+                                            {report ? `₹${Math.round(estimatedTax).toLocaleString()}` : '₹0'}
+                                        </span>
+                                        <span className="text-sm font-bold text-emerald-400">Payable</span>
                                     </div>
-                                    <p className="text-xs text-muted font-medium mt-4 flex items-center gap-2">
-                                        <CheckCircle2 size={14} className="text-secondary" />
+                                    <p className="text-xs text-slate-400 font-medium mt-4 flex items-center gap-2">
+                                        <CheckCircle2 size={14} className="text-emerald-400" />
                                         Calculated based on linked bank and investment data.
                                     </p>
                                 </div>
-                                <div className="w-full md:w-auto flex flex-col gap-3">
-                                    <div className="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-border">
-                                        <p className="text-[10px] font-bold text-muted uppercase">Taxable Income</p>
-                                        <p className="text-lg font-bold">₹12,45,000</p>
+                                <div className="w-full md:w-auto flex flex-col gap-3 min-w-[200px]">
+                                    <div className="p-3 rounded-2xl bg-white/10 border border-white/10 flex justify-between items-center">
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase">Gross Income</p>
+                                        <p className="text-base font-bold text-white">
+                                            {report ? `₹${Number(report.total_income).toLocaleString()}` : '₹0'}
+                                        </p>
                                     </div>
-                                    <div className="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-border">
-                                        <p className="text-[10px] font-bold text-muted uppercase">Deductions Claimed</p>
-                                        <p className="text-lg font-bold text-secondary">₹1,50,000</p>
+                                    <div className="p-3 rounded-2xl bg-white/10 border border-white/10 flex justify-between items-center">
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase">Taxable Income</p>
+                                        <p className="text-base font-bold text-white">
+                                            {report ? `₹${Number(report.taxable_amount).toLocaleString()}` : '₹0'}
+                                        </p>
+                                    </div>
+                                    <div className="p-3 rounded-2xl bg-white/10 border border-white/10 flex justify-between items-center">
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase">Deductions</p>
+                                        <p className="text-base font-bold text-emerald-400">
+                                            {report ? `₹${Number(report.deduction_total).toLocaleString()}` : '₹0'}
+                                        </p>
                                     </div>
                                 </div>
                             </div>
                         </CardContent>
                     </Card>
 
-                    {/* Tax Saving Options */}
+                    {/* Missing Documents */}
                     <div>
                         <div className="flex items-center justify-between mb-6">
-                            <h3 className="text-xl font-bold">Tax Saving Opportunities (80C/80D)</h3>
-                            <Badge variant="secondary">₹1,50,000 / ₹2,00,000 used</Badge>
+                            <h3 className="text-xl font-bold">Missing Documents</h3>
+                            <div className={cn(
+                                "px-4 py-2 rounded-xl font-bold text-sm shadow-md flex items-center gap-2",
+                                report?.compliance_score && report.compliance_score >= 80 
+                                    ? "bg-green-100 text-green-700 border border-green-200" 
+                                    : report?.compliance_score && report.compliance_score >= 50
+                                    ? "bg-yellow-100 text-yellow-700 border border-yellow-200"
+                                    : "bg-red-100 text-red-700 border border-red-200"
+                            )}>
+                                <ShieldCheck size={16} />
+                                {report?.compliance_score ? `${Math.round(report.compliance_score)}%` : '0%'} Compliance
+                            </div>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {[
-                                { name: "Public Provident Fund", current: "₹80,000", limit: "₹1,50,000", action: "Invest More" },
-                                { name: "Equity Linked (ELSS)", current: "₹45,000", limit: "₹1,50,000", action: "SIP Now" },
-                                { name: "Health Insurance", current: "₹25,000", limit: "₹25,000", action: "Fully Utilized", status: "full" },
-                                { name: "NPS (Section 80CCD)", current: "₹0", limit: "₹50,000", action: "Start Investing" },
-                            ].map((item) => (
-                                <Card key={item.name} className="border-none shadow-sm hover:shadow-md transition-all">
-                                    <CardContent className="p-6">
-                                        <p className="font-bold text-sm mb-1">{item.name}</p>
-                                        <div className="flex justify-between items-end mt-4">
-                                            <div>
-                                                <p className="text-[10px] text-muted font-bold uppercase tracking-tighter">Current</p>
-                                                <p className="text-base font-bold">{item.current}</p>
-                                            </div>
-                                            <Button
-                                                variant={item.status === 'full' ? 'ghost' : 'outline'}
-                                                size="sm"
-                                                disabled={item.status === 'full'}
-                                                className="text-[10px] h-7 rounded-lg font-bold uppercase"
+                        {report?.missing_documents && report.missing_documents.length > 0 ? (
+                            <Card className="border-none shadow-md overflow-hidden">
+                                <CardContent className="p-0">
+                                    <div className="divide-y divide-slate-100">
+                                        {report.missing_documents.map((docName, idx) => (
+                                            <div 
+                                                key={idx} 
+                                                className="p-5 hover:bg-slate-50 transition-all group cursor-pointer flex items-center gap-4"
                                             >
-                                                {item.action}
-                                            </Button>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            ))}
-                        </div>
+                                                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-red-50 to-red-100 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                                                    <FileText size={20} className="text-red-600" />
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="font-bold text-sm text-slate-900 mb-0.5">{docName}</p>
+                                                    <p className="text-xs text-slate-500 font-medium">
+                                                        Required for tax compliance
+                                                    </p>
+                                                </div>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="text-xs h-9 px-4 rounded-xl font-bold gap-2 shrink-0 group-hover:bg-slate-900 group-hover:text-white group-hover:border-slate-900 transition-all"
+                                                >
+                                                    <Plus size={14} />
+                                                    Upload
+                                                </Button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        ) : (
+                            <Card className="border-none shadow-sm bg-gradient-to-br from-green-50 to-emerald-50">
+                                <CardContent className="p-8 text-center">
+                                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-green-100 to-emerald-100 flex items-center justify-center mx-auto mb-4 shadow-sm">
+                                        <CheckCircle2 size={32} className="text-green-600" />
+                                    </div>
+                                    <p className="font-bold text-green-900 text-lg mb-1">All documents uploaded!</p>
+                                    <p className="text-sm text-green-700 font-medium">Your tax compliance is at 100%</p>
+                                </CardContent>
+                            </Card>
+                        )}
                     </div>
                 </div>
 
-                {/* Sidebar Status */}
-                <div className="lg:col-span-4 space-y-8">
-                    <Card className="border-none shadow-md">
-                        <CardHeader>
-                            <CardTitle className="text-lg">Tax Timeline</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-6">
-                            {[
-                                { date: "July 31, 2026", label: "ITR Filing Deadline", status: "upcoming", icon: Clock },
-                                { date: "Dec 31, 2025", label: "Belated Return Filing", status: "completed", icon: CheckCircle2 },
-                                { date: "March 31, 2026", label: "Tax Saving Deadline", status: "urgent", icon: Calendar },
-                            ].map((step) => (
-                                <div key={step.label} className="flex gap-4">
-                                    <div className={cn(
-                                        "w-10 h-10 rounded-xl flex items-center justify-center shrink-0",
-                                        step.status === 'upcoming' ? "bg-primary/10 text-primary" :
-                                            step.status === 'urgent' ? "bg-accent/10 text-accent" : "bg-secondary/10 text-secondary"
-                                    )}>
-                                        <step.icon size={18} />
-                                    </div>
-                                    <div>
-                                        <p className="text-sm font-bold">{step.label}</p>
-                                        <p className="text-xs text-muted font-medium">{step.date}</p>
-                                    </div>
-                                </div>
-                            ))}
-                        </CardContent>
-                    </Card>
-
-                    <Card className="border-none shadow-md bg-secondary text-white">
-                        <CardContent className="p-6 space-y-4">
-                            <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center">
-                                <ShieldCheck size={24} />
-                            </div>
-                            <h4 className="text-xl font-bold italic">Save up to ₹25,000 more!</h4>
-                            <p className="text-sm text-white/80 leading-relaxed">
-                                Our AI analyzed your spending. If you move ₹50,000 to NPS before March, your tax liability drops by ₹15,450 instantly.
-                            </p>
-                            <Button variant="ghost" className="w-full bg-white/10 hover:bg-white/20 text-white font-bold rounded-xl border border-white/20">
-                                Show Me How <ArrowRight size={16} className="ml-2" />
-                            </Button>
-                        </CardContent>
-                    </Card>
+                {/* AI Tax Assistant Chatbot */}
+                <div className="lg:col-span-5">
+                    <TaxChatbot />
                 </div>
             </div>
         </div>
