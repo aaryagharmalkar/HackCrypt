@@ -84,8 +84,6 @@ export default function Home() {
         'Travel': 'bg-cyan-500',
         'Bills': 'bg-amber-500',
         'Income': 'bg-secondary',
-        'Uncategorized': 'bg-slate-400',
-        'uncategorised': 'bg-slate-400',
         'Uncategorised': 'bg-slate-400',
         'Other': 'bg-slate-400',
         'UPI Payments': 'bg-orange-400'

@@ -128,6 +128,66 @@ export type Database = {
         }
         Relationships: []
       }
+      goals: {
+        Row: {
+          color: string | null
+          created_at: string | null
+          id: string
+          name: string
+          saved_amount: number
+          target_amount: number
+          target_date: string
+          user_id: string
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string | null
+          id?: string
+          name: string
+          saved_amount?: number
+          target_amount: number
+          target_date: string
+          user_id: string
+        }
+        Update: {
+          color?: string | null
+          created_at?: string | null
+          id?: string
+          name?: string
+          saved_amount?: number
+          target_amount?: number
+          target_date?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      income_sources: {
+        Row: {
+          amount: number
+          created_at: string | null
+          frequency: string
+          id: string
+          name: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string | null
+          frequency?: string
+          id?: string
+          name: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string | null
+          frequency?: string
+          id?: string
+          name?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       ingestion_logs: {
         Row: {
           bank: string
@@ -539,4 +599,6 @@ export type PDFDocumentUpdate = TablesUpdate<'pdf_documents'>
 export type Transaction = Tables<'transactions'>
 export type BankAccount = Tables<'bank_accounts'>
 export type Budget = Tables<'budgets'>
+export type Goal = Tables<'goals'>
+export type IncomeSource = Tables<'income_sources'>
 export type User = Tables<'users'>
